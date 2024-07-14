@@ -1,14 +1,10 @@
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use memmap::Mmap;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, ValueEnum)]
-enum VehicleModel {
-    DR1,
-    DR2,
-    PT1,
-}
+mod h264;
+mod vehicle;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -20,11 +16,11 @@ struct Args {
 
     /// Output directory path
     #[arg(short, long)]
-    output: Option<PathBuf>,
+    output_dir: Option<PathBuf>,
 
     /// Vehicle model name
     #[arg(short, long)]
-    model: Option<VehicleModel>,
+    model: Option<vehicle::Model>,
 
     /// H264 topic
     #[arg(long)]
@@ -33,23 +29,46 @@ struct Args {
     /// Camera sequence
     #[arg(long)]
     cam_seq: Option<String>,
+
+    /// Verbose mode. This will log MCAP file summary and each processing steps.
+    #[arg(long)]
+    verbose: bool,
 }
 
 fn main() {
     let args = Args::parse();
-    println!("File: {:?}", args.input.as_os_str());
 
-    let mcap_file_path = args.input;
-    let fd = fs::File::open(mcap_file_path).unwrap();
+    // Summary this file
+    println!("File: {:?}", args.input.as_os_str());
+    let fd = fs::File::open(args.input).unwrap();
     let buf = unsafe { Mmap::map(&fd) }.unwrap();
-    let summary = mcap::read::Summary::read(&buf).unwrap().unwrap();
-    println!("Summary\n{:?}", summary.channels.get(&1).unwrap());
-    let stream = mcap::MessageStream::new(&buf)
-        .unwrap()
-        .filter(|x| x.as_ref().is_ok_and(|x| x.channel.topic == "/Data_GPS"));
-    for message in stream {
-        let m = message.unwrap();
-        println!("Message\n{:?}", m);
-        break;
+
+    if let Some(summary) = mcap::read::Summary::read(&buf).unwrap() {
+        if let Some(stats) = summary.stats {
+            println!("Messages: {}", stats.message_count);
+        } else {
+            println!("Failed to get statistics.")
+        }
+        println!("Topics:");
+        for chn in summary.channels {
+            println!("- {}", chn.1.topic);
+        }
+    } else {
+        println!("Failed to read summary info.")
     }
+
+    // Any extracting jobs?
+    if let Some(topic) = args.h264_topic {
+        let mut parser = h264::Parser::new(args.output_dir.unwrap(), vehicle::Model::PT1);
+        // Gather objects of interests
+        let stream = mcap::MessageStream::new(&buf)
+            .unwrap()
+            .filter(|x| x.as_ref().is_ok_and(|x| x.channel.topic == topic));
+        for message in stream {
+            let m = message.unwrap();
+            parser.process(&m);
+        }
+    }
+
+    println!("Done.")
 }
