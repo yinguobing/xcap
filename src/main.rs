@@ -131,15 +131,8 @@ fn main() {
             .unwrap()
             .filter(|x| x.as_ref().is_ok_and(|x| x.channel.topic == topic));
         for message in stream {
-            let m = message.unwrap();
-            // let buf = std::io::BufReader::new(m.data.as_ref());
-            let m: &[u8] = m.data.as_ref();
-            let decomrpessed = zstd::stream::decode_all(m).unwrap();
-            let dynamic_msg = message_definitions[3].as_ref().unwrap();
-            println!("data: {} {:x?}", &m.len(), &m);
-            println!("dynamic_msg: {} {:x?}", decomrpessed.len(), &decomrpessed);
-            let decoded_msg = dynamic_msg.decode_raw(decomrpessed.as_slice()).unwrap();
-            // parser.process(m);
+            let message = message.unwrap();
+            parser.process(&message);
         }
     }
 

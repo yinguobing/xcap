@@ -18,6 +18,16 @@ impl Parser {
     }
 
     pub fn process(&mut self, message: &Message) {
-        self.writer.write(&message.data).unwrap();
+        let m: &[u8] = message.data.as_ref();
+        // println!("compressed  : {} {:x?}", m.len(), m);
+        let mut decomrpessed = zstd::stream::decode_all(m).unwrap();
+        // println!("decomrpessed: {} {:x?}", decomrpessed.len(), &decomrpessed);
+        // println!("decomrpessed: {} {:?}", decomrpessed.len(), &decomrpessed);
+        let offset: usize = *&decomrpessed[8] as usize + 4;
+        println!("offset   : {:?}", offset);
+        // let dynamic_msg = message_definitions[3].as_ref().unwrap();
+        // let decoded_msg = dynamic_msg.decode(&decomrpessed[..]).unwrap();
+        let raw = &decomrpessed[offset..];
+        self.writer.write(raw).unwrap();
     }
 }
