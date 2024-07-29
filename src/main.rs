@@ -106,8 +106,8 @@ fn main() {
         println!("Failed to read summary info.")
     }
 
-    let data = std::fs::read(args.input).unwrap();
-    let message_definitions = parse_summary(&buf).unwrap();
+    // let data = std::fs::read(args.input).unwrap();
+    // let message_definitions = parse_summary(&buf).unwrap();
     // for raw_message in mcap::read::RawMessageStream::new(&data).unwrap() {
     //     let raw_message = raw_message.unwrap();
     //     let channel_id = raw_message.header.channel_id as usize;
