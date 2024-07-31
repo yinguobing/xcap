@@ -1,9 +1,9 @@
 use clap::Parser;
-use mcap::Summary;
-use ros2_message::dynamic::DynamicMsg;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
+use std::time::Duration;
 mod h264;
 mod vehicle;
 
@@ -18,13 +18,9 @@ struct Args {
     #[arg(short, long)]
     output_dir: Option<PathBuf>,
 
-    /// Vehicle model name
-    #[arg(short, long)]
-    model: Option<vehicle::Model>,
-
     /// H264 topic
     #[arg(long)]
-    h264_topic: Option<String>,
+    topic: Option<String>,
 
     /// Camera sequence
     #[arg(long)]
@@ -62,23 +58,35 @@ fn main() {
     let mut channels: Vec<_> = summary.channels.into_iter().collect();
     channels.sort_by_key(|k| k.0);
     for chn in channels {
-        println!("- {} {} {:?}", chn.0, chn.1.topic, chn.1.schema);
+        println!(" {} {} {:?}", chn.0, chn.1.topic, chn.1.schema);
     }
 
-    // // Any extracting jobs?
-    // if let Some(topic) = args.h264_topic {
-    //     let mut parser =
-    //         h264::Parser::new(&args.output_dir.unwrap(), &args.model.unwrap(), h264_schema);
-    //     // Gather objects of interests
-    //     let stream = mcap::MessageStream::new(&buf)
-    //         .unwrap()
-    //         .filter(|x| x.as_ref().is_ok_and(|x| x.channel.topic == topic));
-    //     for message in stream {
-    //         let message = message.unwrap();
-    //         parser.process(&message);
-    //     }
-    //     // parser.dump_frames();
-    // }
+    // Setup a progress bar.
+    let spinner_style = ProgressStyle::default_spinner()
+        .template("{prefix:} {spinner} {wide_msg}")
+        .unwrap();
+    let bar = ProgressBar::new_spinner();
+    bar.set_style(spinner_style);
+    bar.enable_steady_tick(Duration::from_millis(100));
 
+    // Any extracting jobs?
+    if let Some(topic) = args.topic {
+        println!("Processing...");
+        let mut parser = h264::Parser::new(&args.output_dir.unwrap());
+        // Gather objects of interests
+        let stream = mcap::MessageStream::new(&buf)
+            .unwrap()
+            .filter(|x| x.as_ref().is_ok_and(|x| x.channel.topic == topic));
+        let mut counter = 0;
+        for message in stream {
+            let message = message.unwrap();
+            parser.process(&message);
+            counter += 1;
+            bar.set_message(format!("{} {}", topic, counter.to_string()));
+        }
+        bar.finish();
+    } else {
+        println!("No topics specified.");
+    }
     println!("Done.");
 }

@@ -38,13 +38,11 @@ struct Img {
 }
 
 impl Parser {
-    pub fn new(output_path: &PathBuf, vehicle_model: &Model, schema: Arc<mcap::Schema>) -> Self {
+    pub fn new(output_path: &PathBuf) -> Self {
         // Create H264 file
         let h264_out = output_path.join("raw.h264");
         let file = File::create(&h264_out).unwrap();
         let writer = BufWriter::new(file);
-        // let w = writer.write(vehicle_model.h264_header()).unwrap();
-        // println!("w: {}", w);
 
         // Create frame output dir
         let frame_out = output_path.join("frames");
@@ -64,19 +62,9 @@ impl Parser {
 
     pub fn process(&mut self, message: &Message) {
         let m: &[u8] = message.data.as_ref();
-        // println!("compressed  : {} {:x?}", m.len(), m);
         let decomrpessed = zstd::stream::decode_all(m).unwrap();
-        // println!("decomrpessed: {} {:x?}", decomrpessed.len(), &decomrpessed);
-        // println!("decomrpessed: {} {:?}", decomrpessed.len(), &decomrpessed);
         let img = cdr::deserialize_from::<_, Img, _>(decomrpessed.as_slice(), cdr::size::Infinite)
             .unwrap();
-        // println!("{:?}", img);
-        // println!("{:?}", img.data.len());
-        // let offset: usize = *&decomrpessed[8] as usize + 4;
-        // println!("offset   : {:?}", offset);
-        // // let dynamic_msg = message_definitions[3].as_ref().unwrap();
-        // // let decoded_msg = dynamic_msg.decode(&decomrpessed[..]).unwrap();
-        // let raw = &decomrpessed[offset..];
         self.writer.write(&img.data).unwrap();
     }
 }
