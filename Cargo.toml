@@ -8,8 +8,10 @@ edition = "2021"
 [dependencies]
 cdr = "0.2.4"
 clap = { version = "4.5.9", features = ["derive"] }
-mcap = { version = "0.9.1", features = ["zstd"] }
+mcap = { version = "0.9.1" }
 memmap = "0.7.0"
 ros2_message = "0.0.5"
 serde = { version = "1.0.204", features = ["derive"] }
 zstd = "0.13.2"
+openh264 = "0.6.1"
+turbojpeg = { version = "1.1.0", features = ["image"] }
