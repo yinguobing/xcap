@@ -1,4 +1,3 @@
-use crate::vehicle::Model;
 use mcap::Message;
 use openh264::decoder::Decoder;
 use openh264::formats::YUVSource;
@@ -7,12 +6,11 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
-use std::sync::Arc;
 
 pub struct Parser {
     // writer: File,
     writer: BufWriter<File>,
-    timestamps: Vec<u32>,
+    timestamps: Vec<u64>,
     frame_out: PathBuf,
     h264_out: PathBuf,
     h264_decoder: Decoder,
@@ -61,6 +59,7 @@ impl Parser {
     }
 
     pub fn process(&mut self, message: &Message) {
+        self.timestamps.push(message.publish_time);
         let m: &[u8] = message.data.as_ref();
         let decomrpessed = zstd::stream::decode_all(m).unwrap();
         let img = cdr::deserialize_from::<_, Img, _>(decomrpessed.as_slice(), cdr::size::Infinite)
