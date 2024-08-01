@@ -58,7 +58,13 @@ fn main() {
     let mut channels: Vec<_> = summary.channels.into_iter().collect();
     channels.sort_by_key(|k| k.0);
     for chn in channels {
-        println!(" {} {} {:?}", chn.0, chn.1.topic, chn.1.schema);
+        println!(
+            " {}, {}, MsgType: {}, Encoding: {}",
+            chn.0,
+            chn.1.topic,
+            chn.1.schema.as_ref().unwrap().name,
+            chn.1.schema.as_ref().unwrap().encoding
+        );
     }
 
     // Setup a progress bar.
@@ -71,8 +77,21 @@ fn main() {
 
     // Any extracting jobs?
     if let Some(topic) = args.topic {
+        // Create output directory
+        let mut output_dir = args
+            .output_dir
+            .clone()
+            .unwrap_or(std::env::current_dir().unwrap());
+        let sub_dir = PathBuf::from(topic.trim_start_matches('/'));
+        output_dir.push(sub_dir);
+        if fs::create_dir_all(&output_dir).is_err() {
+            println!("Failed to create output directory: {:?}", output_dir);
+            return;
+        };
+        println!("Output directory: {:}", output_dir.display());
+
         println!("Processing...");
-        let mut parser = h264::Parser::new(&args.output_dir.unwrap());
+        let mut parser = h264::Parser::new(&output_dir);
         // Gather objects of interests
         let stream = mcap::MessageStream::new(&buf)
             .unwrap()
@@ -84,6 +103,7 @@ fn main() {
             counter += 1;
             bar.set_message(format!("{} {}", topic, counter.to_string()));
         }
+        bar.set_message(format!("{} {} done.", topic, counter.to_string()));
         bar.finish();
     } else {
         println!("No topics specified.");
