@@ -3,13 +3,13 @@ use openh264::decoder::Decoder;
 use openh264::formats::YUVSource;
 use openh264::nal_units;
 use serde::Deserialize;
-use std::fs::File;
+use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
 pub struct Parser {
     // writer: File,
-    writer: BufWriter<File>,
+    writer: BufWriter<fs::File>,
     timestamps: Vec<u64>,
     frame_out: PathBuf,
     h264_out: PathBuf,
@@ -39,12 +39,12 @@ impl Parser {
     pub fn new(output_path: &PathBuf) -> Self {
         // Create H264 file
         let h264_out = output_path.join("raw.h264");
-        let file = File::create(&h264_out).unwrap();
+        let file = fs::File::create(&h264_out).unwrap();
         let writer = BufWriter::new(file);
 
         // Create frame output dir
         let frame_out = output_path.join("frames");
-        std::fs::create_dir_all(&frame_out).unwrap();
+        fs::create_dir_all(&frame_out).unwrap();
 
         // Video decoder
         let h264_decoder = Decoder::new().unwrap();
@@ -58,12 +58,32 @@ impl Parser {
         }
     }
 
-    pub fn process(&mut self, message: &Message) {
+    pub fn accumulate(&mut self, message: &Message) {
         self.timestamps.push(message.publish_time);
         let m: &[u8] = message.data.as_ref();
         let decomrpessed = zstd::stream::decode_all(m).unwrap();
         let img = cdr::deserialize_from::<_, Img, _>(decomrpessed.as_slice(), cdr::size::Infinite)
             .unwrap();
         self.writer.write(&img.data).unwrap();
+    }
+
+    pub fn dump_frames(&mut self) {
+        // Safety
+        self.writer.flush().unwrap();
+
+        // Create output directory
+        fs::create_dir_all(&self.frame_out).unwrap();
+
+        // Read in H.264 file
+        let h264_in = fs::read(&self.h264_out).unwrap();
+
+        // Split H.264 into NAL units and decode each.
+        for packet in nal_units(h264_in.as_slice()) {
+            // On the first few frames this may fail, so you should check the result
+            // a few packets before giving up.
+            if let Ok(Some(yuv)) = self.h264_decoder.decode(packet) {
+                println!("{:?}", yuv.dimensions());
+            }
+        }
     }
 }

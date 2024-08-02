@@ -99,11 +99,15 @@ fn main() {
         let mut counter = 0;
         for message in stream {
             let message = message.unwrap();
-            parser.process(&message);
+            parser.accumulate(&message);
             counter += 1;
             bar.set_message(format!("{} {}", topic, counter.to_string()));
         }
         bar.set_message(format!("{} {} done.", topic, counter.to_string()));
+
+        // Dump frames
+        parser.dump_frames();
+
         bar.finish();
     } else {
         println!("No topics specified.");
