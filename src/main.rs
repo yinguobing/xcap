@@ -104,11 +104,10 @@ fn main() {
             bar.set_message(format!("{} {}", topic, counter.to_string()));
         }
         bar.set_message(format!("{} {} done.", topic, counter.to_string()));
+        bar.finish();
 
         // Dump frames
         parser.dump_frames();
-
-        bar.finish();
     } else {
         println!("No topics specified.");
     }
