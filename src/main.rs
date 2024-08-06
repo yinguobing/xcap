@@ -34,6 +34,21 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
+    // Safety first
+    if !args.input.exists() {
+        println!("Directory not found: {:?}", args.input.as_os_str());
+        return;
+    }
+
+    // Find all macp files
+    let mut files: Vec<PathBuf> = fs::read_dir(&args.input)
+        .unwrap()
+        .map(|f| f.unwrap().path())
+        .filter(|f| f.ends_with(".mcap"))
+        .collect();
+    files.sort();
+    println!("Found {} files.", files.len());
+
     // Summary this file
     println!("File: {:?}", args.input.as_os_str());
     let mut fd = fs::File::open(&args.input).unwrap();
