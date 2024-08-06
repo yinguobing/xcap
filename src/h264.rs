@@ -1,3 +1,4 @@
+use indicatif::{ProgressBar, ProgressStyle};
 use mcap::Message;
 use openh264::decoder::Decoder;
 use openh264::formats::YUVSource;
@@ -78,6 +79,15 @@ impl Parser {
         let h264_in = fs::read(&self.h264_out).unwrap();
 
         // Split H.264 into NAL units and decode each.
+        let bar = ProgressBar::new(self.timestamps.len() as u64);
+        bar.set_style(
+            ProgressStyle::with_template(
+                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-"),
+        );
+        let mut idx: usize = 0;
         for packet in nal_units(h264_in.as_slice()) {
             // On the first few frames this may fail, so you should check the result
             // a few packets before giving up.
@@ -87,11 +97,15 @@ impl Parser {
                 yuv.write_rgb8(buf.as_mut_slice());
                 let (width, height) = yuv.dimensions();
                 let rgb = image::RgbImage::from_vec(width as u32, height as u32, buf).unwrap();
-                let img_path = self.frame_out.join("img.jpg");
+                let img_path = self
+                    .frame_out
+                    .join(format!("{}.jpg", self.timestamps.get(idx).unwrap()));
                 rgb.save_with_format(img_path, image::ImageFormat::Jpeg)
                     .unwrap();
-                break;
+                bar.inc(1);
+                idx += 1;
             }
         }
+        bar.finish();
     }
 }
