@@ -105,7 +105,6 @@ fn main() {
     }
 
     // Find all macp files
-    println!("Reading direcory...");
     let mut files: Vec<PathBuf> = fs::read_dir(&args.input)
         .unwrap()
         .map(|f| f.unwrap().path())
