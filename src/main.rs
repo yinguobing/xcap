@@ -36,7 +36,7 @@ struct Topic {
     id: u16,
     name: String,
     description: String,
-    msg_count: u64,
+    msg_count: Option<u64>,
 }
 
 impl std::fmt::Display for Topic {
@@ -44,7 +44,14 @@ impl std::fmt::Display for Topic {
         write!(
             f,
             "{}, {}, msgs: {}, {}",
-            self.id, self.name, self.msg_count, self.description
+            self.id,
+            self.name,
+            if self.msg_count.is_some() {
+                self.msg_count.unwrap().to_string()
+            } else {
+                "Unknown".to_owned()
+            },
+            self.description
         )
     }
 }
@@ -78,7 +85,16 @@ fn summary(files: &Vec<PathBuf>) -> Vec<Topic> {
                         chn.1.schema.as_ref().unwrap().name,
                         chn.1.schema.as_ref().unwrap().encoding
                     );
-                    t.msg_count += stats.channel_message_counts.get(&chn.0).unwrap();
+                    t.msg_count = if t.msg_count.is_some()
+                        && stats.channel_message_counts.get(&chn.0).is_some()
+                    {
+                        Some(
+                            t.msg_count.unwrap()
+                                + stats.channel_message_counts.get(&chn.0).unwrap(),
+                        )
+                    } else {
+                        None
+                    };
                 })
                 .or_insert(Topic {
                     id: chn.0,
@@ -88,7 +104,7 @@ fn summary(files: &Vec<PathBuf>) -> Vec<Topic> {
                         chn.1.schema.as_ref().unwrap().name,
                         chn.1.schema.as_ref().unwrap().encoding
                     ),
-                    msg_count: stats.channel_message_counts.get(&chn.0).unwrap().clone(),
+                    msg_count: stats.channel_message_counts.get(&chn.0).copied(),
                 });
         }
     }
