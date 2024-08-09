@@ -43,7 +43,7 @@ impl std::fmt::Display for Topic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "id: {}, {}, msgs: {}, {}",
+            "{}, {}, msgs: {}, {}",
             self.id, self.name, self.msg_count, self.description
         )
     }
@@ -100,7 +100,7 @@ fn main() {
 
     // Safety first
     if !args.input.exists() {
-        println!("Directory not found: {:?}", args.input.as_os_str());
+        println!("Input directory not found: {:?}", args.input.as_os_str());
         return;
     }
 
@@ -133,45 +133,59 @@ fn main() {
     bar.enable_steady_tick(Duration::from_millis(100));
 
     // Any extracting jobs?
-    if let Some(topic) = args.topic {
-        println!("Extracting: {}", topic);
-        // Create output directory. Using topic name as directory path.
-        let mut output_dir = args
-            .output_dir
-            .clone()
-            .unwrap_or(std::env::current_dir().unwrap());
-        let sub_dir = PathBuf::from(topic.trim_start_matches('/'));
-        output_dir.push(sub_dir);
-        if fs::create_dir_all(&output_dir).is_err() {
-            println!("Failed to create output directory: {:?}", output_dir);
-            return;
-        };
-        println!("- Output directory: {:}", output_dir.display());
+    let Some(topic_name) = args.topic else {
+        println!("No topic specified. Use `--topic` to set topic.");
+        return;
+    };
 
-        println!("- Extracing H.264...");
-        let mut parser = h264::Parser::new(&output_dir);
-        let mut counter = 0;
-        for file in files.iter() {
-            let mut fd = fs::File::open(file).unwrap();
-            let mut buf = Vec::new();
-            fd.read_to_end(&mut buf).unwrap();
-            let stream = mcap::MessageStream::new(&buf)
-                .unwrap()
-                .filter(|x| x.as_ref().is_ok_and(|x| x.channel.topic == topic));
-            for message in stream {
-                let message = message.unwrap();
-                parser.accumulate(&message);
-                counter += 1;
-                bar.set_message(format!("{} {}", topic, counter.to_string()));
-            }
+    // Topic name valid?
+    let Some(topic_name) = topics.iter().find_map(|t| {
+        if t.name == topic_name {
+            Some(topic_name.clone())
+        } else {
+            None
         }
-        bar.finish();
+    }) else {
+        println!("Topic not found: {}", topic_name);
+        return;
+    };
+    println!("Extracting: {}", topic_name);
 
-        // Dump frames
-        println!("- Extracing camera frames...");
-        parser.dump_frames();
-    } else {
-        println!("No topics specified.");
+    // Create output directory. Using topic name as directory path.
+    let mut output_dir = args
+        .output_dir
+        .clone()
+        .unwrap_or(std::env::current_dir().unwrap());
+    let sub_dir = PathBuf::from(topic_name.trim_start_matches('/'));
+    output_dir.push(sub_dir);
+    if fs::create_dir_all(&output_dir).is_err() {
+        println!("Failed to create output directory: {:?}", output_dir);
+        return;
+    };
+    println!("- Output directory: {:}", output_dir.display());
+
+    println!("- Extracing H.264...");
+    let mut parser = h264::Parser::new(&output_dir);
+    let mut counter = 0;
+    for file in files.iter() {
+        let mut fd = fs::File::open(file).unwrap();
+        let mut buf = Vec::new();
+        fd.read_to_end(&mut buf).unwrap();
+        let stream = mcap::MessageStream::new(&buf)
+            .unwrap()
+            .filter(|x| x.as_ref().is_ok_and(|x| x.channel.topic == topic_name));
+        for message in stream {
+            let message = message.unwrap();
+            parser.accumulate(&message);
+            counter += 1;
+            bar.set_message(format!("{} {}", topic_name, counter.to_string()));
+        }
     }
+    bar.finish();
+
+    // Dump frames
+    println!("- Extracing frames...");
+    parser.dump_frames();
+
     println!("Done.");
 }

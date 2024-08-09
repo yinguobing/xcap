@@ -1,5 +1,6 @@
 [package]
 name = "mcap-extractor"
+description = "A simple MCAP extractor"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,3 +15,26 @@ zstd = "0.13.2"
 openh264 = "0.6.1"
 indicatif = { version = "0.17.8", features = ["rayon"] }
 image = "0.25.2"
+
+# To package a DEB package
+[package.metadata.deb]
+maintainer = "Yin Guobing <yinguobing@gmail.com>"
+copyright = "2024, Yin Guobing <yinguobing@gmail.com>"
+license-file = ["LICENSE", "4"]
+extended-description = """\
+A simple MCAP extractor."""
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    [
+        "target/release/mcap-extractor",
+        "usr/bin/",
+        "755",
+    ],
+    [
+        "README.md",
+        "usr/share/doc/mcap-extractor/README",
+        "644",
+    ],
+]
