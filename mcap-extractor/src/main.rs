@@ -126,6 +126,10 @@ fn main() {
         .map(|f| f.unwrap().path())
         .filter(|f| f.is_file() && f.extension().is_some_and(|f| f.eq("mcap")))
         .collect();
+    if files.len() == 0 {
+        println!("No MCAP files found in path: {}", args.input.display());
+        return;
+    }
     files.sort();
     println!("Found MCAP files: {}", files.len());
     for f in files.iter() {
