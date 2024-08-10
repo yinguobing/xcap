@@ -1,0 +1,7 @@
+[package]
+name = "ros2-builtin-interfaces"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true }

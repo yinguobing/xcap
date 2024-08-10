@@ -1,0 +1,41 @@
+[package]
+name = "mcap-extractor"
+description = "A simple MCAP extractor"
+version = "0.1.1"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cdr = "0.2.4"
+clap = { version = "4.5.9", features = ["derive"] }
+mcap = { version = "0.9.1" }
+serde = { workspace = true }
+zstd = "0.13.2"
+openh264 = "0.6.1"
+indicatif = { version = "0.17.8", features = ["rayon"] }
+image = "0.25.2"
+ros2-sensor-msgs = { workspace = true }
+
+# To package a DEB package
+[package.metadata.deb]
+maintainer = "Yin Guobing <yinguobing@gmail.com>"
+copyright = "2024, Yin Guobing <yinguobing@gmail.com>"
+license-file = ["LICENSE", "4"]
+extended-description = """\
+A simple MCAP extractor."""
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    [
+        "target/release/mcap-extractor",
+        "usr/bin/",
+        "755",
+    ],
+    [
+        "README.md",
+        "usr/share/doc/mcap-extractor/README",
+        "644",
+    ],
+]
