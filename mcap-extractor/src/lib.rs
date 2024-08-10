@@ -1,7 +1,28 @@
 use indicatif::{ProgressBar, ProgressStyle};
-use std::{collections::HashMap, fs, io::Read, path::PathBuf, time::Duration};
+use std::{
+    collections::HashMap,
+    fs,
+    io::{self, Read},
+    path::{Path, PathBuf},
+    time::Duration,
+};
+use thiserror::Error;
 
 mod h264;
+
+#[derive(Error, Debug)]
+pub enum ExtractorError {
+    #[error("Failed to read summary info: {0}")]
+    NoSummary(String),
+    #[error("Failed to read statistics info: {0}")]
+    NoStatistics(String),
+    #[error("Topic not found: {0}")]
+    InvalidTopic(String),
+    #[error("Failed to create directory. {0}")]
+    OutputIOError(#[from] io::Error),
+    #[error("unknown error")]
+    Unknown,
+}
 
 struct Topic {
     id: u16,
@@ -27,7 +48,7 @@ impl std::fmt::Display for Topic {
     }
 }
 
-fn summary(files: &Vec<PathBuf>) -> Vec<Topic> {
+fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, ExtractorError> {
     let mut topics: HashMap<u16, Topic> = HashMap::new();
 
     for file in files {
@@ -35,12 +56,12 @@ fn summary(files: &Vec<PathBuf>) -> Vec<Topic> {
         let mut buf = Vec::new();
         fd.read_to_end(&mut buf).unwrap();
         let Some(summary) = mcap::read::Summary::read(&buf).unwrap() else {
-            panic!("Failed to read summary info: {}", file.display());
+            return Err(ExtractorError::NoSummary(file.display().to_string()));
         };
 
         // Statistics
         let Some(stats) = summary.stats else {
-            panic!("Failed to get statistics: {}", file.display())
+            return Err(ExtractorError::NoStatistics(file.display().to_string()));
         };
 
         // Topics
@@ -57,7 +78,7 @@ fn summary(files: &Vec<PathBuf>) -> Vec<Topic> {
                         chn.1.schema.as_ref().unwrap().encoding
                     );
                     t.msg_count = if t.msg_count.is_some()
-                        && stats.channel_message_counts.get(&chn.0).is_some()
+                        && stats.channel_message_counts.contains_key(&chn.0)
                     {
                         Some(
                             t.msg_count.unwrap()
@@ -79,25 +100,21 @@ fn summary(files: &Vec<PathBuf>) -> Vec<Topic> {
                 });
         }
     }
-    topics.into_values().collect()
+    Ok(topics.into_values().collect())
 }
 
-pub fn process(files: &Vec<PathBuf>, output_dir: &PathBuf, topic_name: &str) {
+pub fn process(
+    files: &Vec<PathBuf>,
+    output_dir: &Path,
+    topic_name: &str,
+) -> Result<(), ExtractorError> {
     // Summary these files
-    let mut topics = summary(&files);
+    let mut topics = summary(files)?;
     topics.sort_by_key(|k| k.id);
     println!("Found topics: {}", topics.len());
     for topic in topics.iter() {
         println!("- {}", topic);
     }
-
-    // Setup a progress bar.
-    let spinner_style = ProgressStyle::default_spinner()
-        .template("{prefix:} {spinner} {wide_msg}")
-        .unwrap();
-    let bar = ProgressBar::new_spinner();
-    bar.set_style(spinner_style);
-    bar.enable_steady_tick(Duration::from_millis(100));
 
     // Topic name valid?
     let Some(topic_name) = topics.iter().find_map(|t| {
@@ -107,18 +124,23 @@ pub fn process(files: &Vec<PathBuf>, output_dir: &PathBuf, topic_name: &str) {
             None
         }
     }) else {
-        println!("Topic not found: {}", topic_name);
-        return;
+        return Err(ExtractorError::InvalidTopic(topic_name.to_string()));
     };
-    println!("Extracting: {}", topic_name);
+
+    // Setup a progress bar.
+    let spinner_style = ProgressStyle::default_spinner()
+        .template("{prefix:} {spinner} {wide_msg}")
+        .unwrap();
+    let bar = ProgressBar::new_spinner();
+    bar.set_style(spinner_style);
+    bar.enable_steady_tick(Duration::from_millis(100));
+
+    println!("Extracting...");
 
     // Using topic name as directory path
     let sub_dir = PathBuf::from(topic_name.trim_start_matches('/'));
     let output_dir = output_dir.join(sub_dir);
-    if fs::create_dir_all(&output_dir).is_err() {
-        println!("Failed to create output directory: {:?}", output_dir);
-        return;
-    };
+    fs::create_dir_all(&output_dir)?;
     println!("- Output directory: {}", output_dir.display());
 
     println!("- Extracting H.264...");
@@ -135,7 +157,7 @@ pub fn process(files: &Vec<PathBuf>, output_dir: &PathBuf, topic_name: &str) {
             let message = message.unwrap();
             parser.accumulate(&message);
             counter += 1;
-            bar.set_message(format!("{} {}", topic_name, counter.to_string()));
+            bar.set_message(format!("{} {}", topic_name, counter));
         }
     }
     bar.finish();
@@ -143,4 +165,6 @@ pub fn process(files: &Vec<PathBuf>, output_dir: &PathBuf, topic_name: &str) {
     // Dump frames
     println!("- Extracting frames...");
     parser.dump_frames();
+
+    Ok(())
 }

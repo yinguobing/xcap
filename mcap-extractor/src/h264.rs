@@ -5,7 +5,7 @@ use ros2_sensor_msgs::msg::CompressedImage;
 use std::{
     fs,
     io::{BufWriter, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 pub struct Parser {
@@ -18,7 +18,7 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(output_path: &PathBuf) -> Self {
+    pub fn new(output_path: &Path) -> Self {
         // Create H264 file
         let h264_out = output_path.join("raw.h264");
         let file = fs::File::create(&h264_out).unwrap();
@@ -49,7 +49,7 @@ impl Parser {
             cdr::size::Infinite,
         )
         .unwrap();
-        self.writer.write(&img.data).unwrap();
+        self.writer.write_all(&img.data).unwrap();
     }
 
     pub fn dump_frames(&mut self) {

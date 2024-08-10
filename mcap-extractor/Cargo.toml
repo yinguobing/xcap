@@ -16,6 +16,7 @@ openh264 = "0.6.1"
 indicatif = { version = "0.17.8", features = ["rayon"] }
 image = "0.25.2"
 ros2-sensor-msgs = { workspace = true }
+thiserror = "1.0.63"
 
 # To package a DEB package
 [package.metadata.deb]

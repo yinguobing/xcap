@@ -38,7 +38,7 @@ fn main() {
         .map(|f| f.unwrap().path())
         .filter(|f| f.is_file() && f.extension().is_some_and(|f| f.eq("mcap")))
         .collect();
-    if files.len() == 0 {
+    if files.is_empty() {
         println!("No MCAP files found in path: {}", args.input.display());
         return;
     }
@@ -52,7 +52,13 @@ fn main() {
     let output_dir = args.output_dir.unwrap_or(std::env::current_dir().unwrap());
 
     // Process
-    mcap_extractor::process(&files, &output_dir, &topic_name);
-
-    println!("Done.");
+    match mcap_extractor::process(&files, &output_dir, &topic_name) {
+        Ok(_) => {
+            println!("Done.");
+        }
+        Err(e) => {
+            println!("{}", e);
+            println!("Sorry, job failed.");
+        }
+    }
 }
