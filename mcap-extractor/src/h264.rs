@@ -75,19 +75,24 @@ impl Parser {
         for packet in nal_units(h264_in.as_slice()) {
             // On the first few frames this may fail, so you should check the result
             // a few packets before giving up.
-            if let Ok(Some(yuv)) = self.h264_decoder.decode(packet) {
-                let rgb_buf_size = yuv.estimate_rgb_u8_size();
-                let mut buf: Vec<u8> = vec![0; rgb_buf_size];
-                yuv.write_rgb8(buf.as_mut_slice());
-                let (width, height) = yuv.dimensions();
-                let rgb = image::RgbImage::from_vec(width as u32, height as u32, buf).unwrap();
-                let img_path = self
-                    .frame_out
-                    .join(format!("{}.jpg", self.timestamps.get(idx).unwrap()));
-                rgb.save_with_format(img_path, image::ImageFormat::Jpeg)
-                    .unwrap();
-                bar.inc(1);
-                idx += 1;
+            let decoded = self.h264_decoder.decode(packet);
+            match decoded {
+                Ok(Some(yuv)) => {
+                    let rgb_buf_size = yuv.estimate_rgb_u8_size();
+                    let mut buf: Vec<u8> = vec![0; rgb_buf_size];
+                    yuv.write_rgb8(buf.as_mut_slice());
+                    let (width, height) = yuv.dimensions();
+                    let rgb = image::RgbImage::from_vec(width as u32, height as u32, buf).unwrap();
+                    let img_path = self
+                        .frame_out
+                        .join(format!("{}.jpg", self.timestamps.get(idx).unwrap()));
+                    rgb.save_with_format(img_path, image::ImageFormat::Jpeg)
+                        .unwrap();
+                    bar.inc(1);
+                    idx += 1;
+                }
+                Ok(None) => continue,
+                Err(e) => println!("DecodingError: {}", e),
             }
         }
         bar.finish();

@@ -117,13 +117,7 @@ pub fn process(
     }
 
     // Topic name valid?
-    let Some(topic_name) = topics.iter().find_map(|t| {
-        if t.name == topic_name {
-            Some(topic_name.to_owned())
-        } else {
-            None
-        }
-    }) else {
+    let Some(_) = topics.iter().find(|t| t.name == topic_name) else {
         return Err(ExtractorError::InvalidTopic(topic_name.to_string()));
     };
 
