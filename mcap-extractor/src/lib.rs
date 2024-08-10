@@ -16,7 +16,7 @@ pub enum ExtractorError {
     NoSummary(String),
     #[error("Failed to read statistics info: {0}")]
     NoStatistics(String),
-    #[error("Topic not found: {0}")]
+    #[error("Invalid topic. {0}")]
     InvalidTopic(String),
     #[error("Failed to create directory. {0}")]
     OutputIOError(#[from] io::Error),
@@ -106,7 +106,7 @@ fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, ExtractorError> {
 pub fn process(
     files: &Vec<PathBuf>,
     output_dir: &Path,
-    topic_name: &str,
+    topic_name: &Option<String>,
 ) -> Result<(), ExtractorError> {
     // Summary these files
     let mut topics = summary(files)?;
@@ -117,8 +117,13 @@ pub fn process(
     }
 
     // Topic name valid?
+    let Some(topic_name) = topic_name.clone() else {
+        return Err(ExtractorError::InvalidTopic(
+            "No topic specified. Use `--topic` to set topic.".to_string(),
+        ));
+    };
     let Some(_) = topics.iter().find(|t| t.name == topic_name) else {
-        return Err(ExtractorError::InvalidTopic(topic_name.to_string()));
+        return Err(ExtractorError::InvalidTopic(topic_name));
     };
 
     // Setup a progress bar.

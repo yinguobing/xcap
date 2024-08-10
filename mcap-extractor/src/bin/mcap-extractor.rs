@@ -26,12 +26,6 @@ fn main() {
         return;
     }
 
-    // Any extracting jobs?
-    let Some(topic_name) = args.topic else {
-        println!("No topic specified. Use `--topic` to set topic.");
-        return;
-    };
-
     // Find all MCAP files
     let mut files: Vec<PathBuf> = fs::read_dir(&args.input)
         .unwrap()
@@ -52,7 +46,7 @@ fn main() {
     let output_dir = args.output_dir.unwrap_or(std::env::current_dir().unwrap());
 
     // Process
-    match mcap_extractor::process(&files, &output_dir, &topic_name) {
+    match mcap_extractor::process(&files, &output_dir, &args.topic) {
         Ok(_) => {
             println!("Done.");
         }
