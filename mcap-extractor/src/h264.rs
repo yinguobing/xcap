@@ -2,9 +2,11 @@ use indicatif::{ProgressBar, ProgressStyle};
 use mcap::Message;
 use openh264::{decoder::Decoder, formats::YUVSource, nal_units};
 use ros2_sensor_msgs::msg::CompressedImage;
-use std::fs;
-use std::io::{BufWriter, Write};
-use std::path::PathBuf;
+use std::{
+    fs,
+    io::{BufWriter, Write},
+    path::PathBuf,
+};
 
 pub struct Parser {
     // writer: File,

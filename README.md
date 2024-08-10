@@ -19,7 +19,7 @@ cargo build --release
 
 Build the deb package if you want to share it with others
 ```bash
-cargo deb
+cargo deb --package mcap-extractor --install
 ```
 
 ## Installation
