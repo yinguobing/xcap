@@ -9,6 +9,7 @@ use std::{
 use thiserror::Error;
 
 mod h264;
+pub mod storage;
 
 #[derive(Error, Debug)]
 pub enum ExtractorError {

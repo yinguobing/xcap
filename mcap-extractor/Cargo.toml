@@ -19,6 +19,8 @@ ros2-sensor-msgs = { workspace = true }
 thiserror = "1.0.63"
 env_logger = { workspace = true }
 log = { workspace = true }
+minio = "0.1.0"
+tokio = "1.39.2"
 
 # To package a DEB package
 [package.metadata.deb]

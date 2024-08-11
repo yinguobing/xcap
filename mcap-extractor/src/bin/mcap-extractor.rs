@@ -1,8 +1,9 @@
 use clap::Parser;
-use log::error;
-use std::{fs, path::PathBuf};
-
 use env_logger::Env;
+use log::error;
+use mcap_extractor::storage;
+use std::{fs, path::PathBuf};
+use tokio;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -20,12 +21,16 @@ struct Args {
     topic: Option<String>,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Logger setup
     let env = Env::default().filter_or("LOG_LEVEL", "info");
     env_logger::init_from_env(env);
 
     let args = Args::parse();
+
+    // Download from remote server?
+    let _ = storage::download("base_url", "bucket", "path").await;
 
     // Safety first
     if !args.input.exists() {
