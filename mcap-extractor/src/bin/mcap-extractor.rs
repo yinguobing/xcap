@@ -1,5 +1,8 @@
 use clap::Parser;
+use log::error;
 use std::{fs, path::PathBuf};
+
+use env_logger::Env;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -18,11 +21,15 @@ struct Args {
 }
 
 fn main() {
+    // Logger setup
+    let env = Env::default().filter_or("LOG_LEVEL", "info");
+    env_logger::init_from_env(env);
+
     let args = Args::parse();
 
     // Safety first
     if !args.input.exists() {
-        println!("Input directory not found: {:?}", args.input.as_os_str());
+        error!("Input directory not found: {:?}", args.input.as_os_str());
         return;
     }
 
@@ -33,7 +40,7 @@ fn main() {
         .filter(|f| f.is_file() && f.extension().is_some_and(|f| f.eq("mcap")))
         .collect();
     if files.is_empty() {
-        println!("No MCAP files found in path: {}", args.input.display());
+        error!("No MCAP files found in path: {}", args.input.display());
         return;
     }
     files.sort();
@@ -51,7 +58,7 @@ fn main() {
             println!("Done.");
         }
         Err(e) => {
-            println!("{}", e);
+            error!("{}", e);
             println!("Sorry, job failed.");
         }
     }

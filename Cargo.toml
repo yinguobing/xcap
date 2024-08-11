@@ -13,3 +13,5 @@ ros2-sensor-msgs = { path = "./ros2-sensor-msgs", version = "0.1.0" }
 ros2-std-msgs = { path = "./ros2-std-msgs", version = "0.1.0" }
 ros2-builtin-interfaces = { path = "./ros2-builtin-interfaces", version = "0.1.0" }
 serde = { version = "1.0.204", features = ["derive"] }
+env_logger = "0.11.5"
+log = "0.4.22"

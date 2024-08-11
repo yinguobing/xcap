@@ -17,6 +17,8 @@ indicatif = { version = "0.17.8", features = ["rayon"] }
 image = "0.25.2"
 ros2-sensor-msgs = { workspace = true }
 thiserror = "1.0.63"
+env_logger = { workspace = true }
+log = { workspace = true }
 
 # To package a DEB package
 [package.metadata.deb]
