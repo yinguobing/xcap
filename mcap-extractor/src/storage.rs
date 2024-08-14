@@ -1,6 +1,6 @@
-use log::error;
+use log::{debug, error, info};
 use minio::s3::{
-    args::{BucketExistsArgs, ObjectConditionalReadArgs},
+    args::{BucketExistsArgs, ListObjectsV2Args, ObjectConditionalReadArgs},
     client::{Client, ClientBuilder},
     creds::StaticProvider,
     http::BaseUrl,
@@ -41,6 +41,44 @@ impl Agent {
             .provider(Some(Box::new(static_provider)))
             .build()?;
         Ok(Self { client })
+    }
+
+    pub async fn download_dir(
+        &self,
+        bucket: &str,
+        dir: &str,
+        local_path: &PathBuf,
+    ) -> Result<(), Error> {
+        // Check bucket exist or not.
+        let exists: bool = self
+            .client
+            .bucket_exists(&BucketExistsArgs::new(&bucket)?)
+            .await?;
+        if !exists {
+            error!("Bucket {} does not exist.", bucket);
+            return Err(Error::NotExisted(bucket.to_string()));
+        }
+
+        // List objects
+        let mut objects: Vec<String> = vec![];
+        let list_obj_args = ListObjectsV2Args::new(bucket)?;
+        let result = self.client.list_objects_v2(&list_obj_args).await?;
+        for item in result.contents.iter() {
+            objects.push(item.name.clone());
+            debug!("Found {}", item.name);
+        }
+
+        // Filter objects
+        let targets: Vec<&String> = objects.iter().filter(|&o| o.starts_with(dir)).collect();
+
+        // Download objects
+        for object in targets {
+            info!("Downloading: {}", object);
+            let local_file = local_path.join(object.split('/').last().unwrap());
+            self.download_object(bucket, object, &local_file).await?;
+        }
+
+        Ok(())
     }
 
     pub async fn download_object(

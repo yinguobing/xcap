@@ -1,7 +1,7 @@
 [package]
 name = "mcap-extractor"
 description = "A simple MCAP extractor"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -22,6 +22,8 @@ log = { workspace = true }
 minio = "0.1.0"
 tokio = "1.39.2"
 reqwest = "0.11.27"
+url = "2.5.2"
+rand = "0.8.5"
 
 # To package a DEB package
 [package.metadata.deb]

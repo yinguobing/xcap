@@ -1,16 +1,18 @@
 use clap::Parser;
 use env_logger::Env;
-use log::error;
-use mcap_extractor::storage;
-use std::{fs, path::PathBuf};
+use log::{error, info};
+use mcap_extractor::storage::Agent;
+use rand::Rng;
+use std::{env, fs, path::PathBuf};
 use tokio;
+use url::Url;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// MCAP file to be parsed
+    /// Input resorce
     #[arg(short, long)]
-    input: PathBuf,
+    input: String,
 
     /// Output directory path
     #[arg(short, long)]
@@ -24,34 +26,122 @@ struct Args {
 #[tokio::main]
 async fn main() {
     // Logger setup
-    let env = Env::default().filter_or("LOG_LEVEL", "info");
-    env_logger::init_from_env(env);
+    let log_env = Env::default().filter_or("LOG_LEVEL", "info");
+    env_logger::init_from_env(log_env);
 
+    // Parse user args
     let args = Args::parse();
 
-    // Download from remote server?
-    let _ = storage::download("base_url", "bucket", "path").await;
-
     // Safety first
-    if !args.input.exists() {
-        error!("Input directory not found: {:?}", args.input.as_os_str());
+    let mut input_src = args.input.clone();
+    if input_src.is_empty() {
+        error!("Input source is empty.");
+        return;
+    }
+
+    // Download from remote server?
+    if input_src.starts_with("http") {
+        let valid_url = match Url::parse(&input_src) {
+            Ok(url) => url,
+            Err(e) => {
+                error!("Invalid URL: {}", e);
+                return;
+            }
+        };
+
+        let base_url = format!(
+            "{}://{}:{}",
+            valid_url.scheme(),
+            valid_url.host_str().expect("Invalid url host"),
+            valid_url.port().expect("Invalid url port")
+        );
+        let bucket = valid_url
+            .path_segments()
+            .expect("Invalid url, valid path expected.")
+            .next()
+            .expect("Invalid url path, bucket name expected.");
+        let obj_name = valid_url
+            .path_segments()
+            .unwrap()
+            .last()
+            .expect("Invalid url path, object name expected.");
+        let object_dir = valid_url
+            .path()
+            .trim_start_matches('/')
+            .trim_start_matches(bucket)
+            .trim_start_matches('/')
+            .trim_end_matches(obj_name)
+            .trim_end_matches("/");
+
+        let region = env::var("S3_REGION").expect("`S3_REGION` not set.");
+        let access_key = env::var("S3_ACCESS_KEY").expect("`S3_REGION` not set.");
+        let secret_key = env::var("S3_SECRET_KEY").expect("`S3_REGION` not set.");
+
+        let storage = match Agent::new(&base_url, &region, &access_key, &secret_key) {
+            Ok(agent) => agent,
+            Err(e) => {
+                error!("Storage init failed. {}", e);
+                return;
+            }
+        };
+
+        const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        const STR_LEN: usize = 6;
+        let mut rng = rand::thread_rng();
+        let rand_str: String = (0..STR_LEN)
+            .map(|_| {
+                let idx = rng.gen_range(0..CHARSET.len());
+                CHARSET[idx] as char
+            })
+            .collect();
+        let local_path = PathBuf::from(format!("/tmp/{}-{}", bucket, rand_str));
+        match std::fs::create_dir_all(&local_path) {
+            Ok(_) => {}
+            Err(e) => {
+                error!(
+                    "Failed to create download directory: {}, {}",
+                    local_path.display(),
+                    e
+                );
+                return;
+            }
+        }
+
+        info!("Downloading objects from: {}", object_dir);
+        match storage.download_dir(bucket, object_dir, &local_path).await {
+            Ok(_) => {
+                info!("Download succeeded.");
+            }
+            Err(e) => {
+                error!("Download failed. {}", e);
+                return;
+            }
+        }
+        input_src = local_path.into_os_string().into_string().unwrap();
+    } else {
+        input_src = args.input.clone();
+    }
+
+    let input_dir = PathBuf::from(input_src);
+    if !input_dir.exists() {
+        error!("Input directory not found: {}", input_dir.display());
         return;
     }
 
     // Find all MCAP files
-    let mut files: Vec<PathBuf> = fs::read_dir(&args.input)
+    let mut files: Vec<PathBuf> = fs::read_dir(&input_dir)
         .unwrap()
         .map(|f| f.unwrap().path())
         .filter(|f| f.is_file() && f.extension().is_some_and(|f| f.eq("mcap")))
         .collect();
     if files.is_empty() {
-        error!("No MCAP files found in path: {}", args.input.display());
+        error!("No MCAP files found in path: {}", input_dir.display());
         return;
     }
     files.sort();
-    println!("Found MCAP files: {}", files.len());
+    info!("Found MCAP files: {}", files.len());
     for f in files.iter() {
-        println!("- {}", f.display());
+        info!("- {}", f.display());
     }
 
     // Output directory
@@ -60,11 +150,11 @@ async fn main() {
     // Process
     match mcap_extractor::process(&files, &output_dir, &args.topic) {
         Ok(_) => {
-            println!("Done.");
+            info!("Done.");
         }
         Err(e) => {
             error!("{}", e);
-            println!("Sorry, job failed.");
+            info!("Sorry, job failed.");
         }
     }
 }
