@@ -1,4 +1,5 @@
 use indicatif::{ProgressBar, ProgressStyle};
+use log::{error, info};
 use std::sync::{atomic::AtomicBool, Arc};
 use std::{
     collections::HashMap,
@@ -30,7 +31,7 @@ pub enum ExtractorError {
     Unknown,
 }
 
-struct Topic {
+pub struct Topic {
     id: u16,
     name: String,
     description: String,
@@ -54,9 +55,8 @@ impl std::fmt::Display for Topic {
     }
 }
 
-fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, ExtractorError> {
+pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, ExtractorError> {
     let mut topics: HashMap<u16, Topic> = HashMap::new();
-
     for file in files {
         let mut fd = fs::File::open(file).unwrap();
         let mut buf = Vec::new();
@@ -106,7 +106,9 @@ fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, ExtractorError> {
                 });
         }
     }
-    Ok(topics.into_values().collect())
+    let mut topics: Vec<Topic> = topics.into_values().collect();
+    topics.sort_by_key(|k| k.id);
+    Ok(topics)
 }
 
 pub fn process(
@@ -115,13 +117,8 @@ pub fn process(
     topic_name: &Option<String>,
     sigint: Arc<AtomicBool>,
 ) -> Result<(), ExtractorError> {
-    // Summary these files
-    let mut topics = summary(files)?;
-    topics.sort_by_key(|k| k.id);
-    println!("Found topics: {}", topics.len());
-    for topic in topics.iter() {
-        println!("- {}", topic);
-    }
+    // Get all topics
+    let topics = summary(files)?;
 
     // Topic name valid?
     let Some(topic_name) = topic_name.clone() else {
@@ -133,6 +130,8 @@ pub fn process(
         return Err(ExtractorError::InvalidTopic(topic_name));
     };
 
+    info!("- Extracting H.264...");
+
     // Setup a progress bar.
     let spinner_style = ProgressStyle::default_spinner()
         .template("{prefix:} {spinner} {wide_msg}")
@@ -141,15 +140,11 @@ pub fn process(
     bar.set_style(spinner_style);
     bar.enable_steady_tick(Duration::from_millis(100));
 
-    println!("Extracting...");
-
     // Using topic name as directory path
     let sub_dir = PathBuf::from(topic_name.trim_start_matches('/'));
     let output_dir = output_dir.join(sub_dir);
     fs::create_dir_all(&output_dir)?;
-    println!("- Output directory: {}", output_dir.display());
 
-    println!("- Extracting H.264...");
     let mut parser = h264::Parser::new(&output_dir);
     let mut counter = 0;
     for file in files.iter() {
@@ -172,7 +167,7 @@ pub fn process(
     bar.finish();
 
     // Dump frames
-    println!("- Extracting frames...");
+    info!("- Extracting frames...");
     parser.dump_frames(sigint)?;
 
     Ok(())

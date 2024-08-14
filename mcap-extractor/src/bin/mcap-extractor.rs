@@ -189,10 +189,25 @@ async fn main() {
         info!("- {}", f.display());
     }
 
+    // Summary this job, this will log useful info such as topics for user.
+    let topics = match mcap_extractor::summary(&files) {
+        Ok(t) => t,
+        Err(e) => {
+            error!("{}", e);
+            return;
+        }
+    };
+    info!("Found topics: {}", topics.len());
+    for topic in topics.iter() {
+        info!("- {}", topic);
+    }
+
     // Output directory
     let output_dir = args.output_dir.unwrap_or(std::env::current_dir().unwrap());
 
     // Process
+    info!("Extracting...");
+    info!("Output directory: {}", output_dir.display());
     match mcap_extractor::process(&files, &output_dir, &args.topic, sigint) {
         Ok(_) => {
             info!("Done.");
