@@ -18,7 +18,6 @@ use serde::Deserialize;
 ///
 /// uint8[] data
 /// Compressed image buffer
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 pub struct CompressedImage {
     pub header: Header,
