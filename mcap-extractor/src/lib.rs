@@ -1,4 +1,5 @@
 use indicatif::{ProgressBar, ProgressStyle};
+use std::sync::{atomic::AtomicBool, Arc};
 use std::{
     collections::HashMap,
     fs,
@@ -21,6 +22,10 @@ pub enum ExtractorError {
     InvalidTopic(String),
     #[error("Failed to create directory. {0}")]
     OutputIOError(#[from] io::Error),
+    #[error("Interupted")]
+    Interupted,
+    #[error("H.264 error. {0}")]
+    H264Error(#[from] h264::Error),
     #[error("unknown error")]
     Unknown,
 }
@@ -108,6 +113,7 @@ pub fn process(
     files: &Vec<PathBuf>,
     output_dir: &Path,
     topic_name: &Option<String>,
+    sigint: Arc<AtomicBool>,
 ) -> Result<(), ExtractorError> {
     // Summary these files
     let mut topics = summary(files)?;
@@ -154,6 +160,9 @@ pub fn process(
             .unwrap()
             .filter(|x| x.as_ref().is_ok_and(|x| x.channel.topic == topic_name));
         for message in stream {
+            if sigint.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(ExtractorError::Interupted);
+            }
             let message = message.unwrap();
             parser.accumulate(&message);
             counter += 1;
@@ -164,7 +173,7 @@ pub fn process(
 
     // Dump frames
     println!("- Extracting frames...");
-    parser.dump_frames();
+    parser.dump_frames(sigint)?;
 
     Ok(())
 }

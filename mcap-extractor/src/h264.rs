@@ -6,7 +6,14 @@ use std::{
     fs,
     io::{BufWriter, Write},
     path::{Path, PathBuf},
+    sync::{atomic::AtomicBool, Arc},
 };
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("Interupted")]
+    Interupted,
+}
 
 pub struct Parser {
     // writer: File,
@@ -52,7 +59,7 @@ impl Parser {
         self.writer.write_all(&img.data).unwrap();
     }
 
-    pub fn dump_frames(&mut self) {
+    pub fn dump_frames(&mut self, sigint: Arc<AtomicBool>) -> Result<(), Error> {
         // Safety
         self.writer.flush().unwrap();
 
@@ -73,6 +80,9 @@ impl Parser {
         );
         let mut idx: usize = 0;
         for packet in nal_units(h264_in.as_slice()) {
+            if sigint.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(Error::Interupted);
+            }
             // On the first few frames this may fail, so you should check the result
             // a few packets before giving up.
             let decoded = self.h264_decoder.decode(packet);
@@ -96,5 +106,6 @@ impl Parser {
             }
         }
         bar.finish();
+        Ok(())
     }
 }

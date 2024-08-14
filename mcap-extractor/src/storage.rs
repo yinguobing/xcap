@@ -5,6 +5,7 @@ use minio::s3::{
     creds::StaticProvider,
     http::BaseUrl,
 };
+use std::sync::{atomic::AtomicBool, Arc};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -51,6 +52,7 @@ impl Agent {
         bucket: &str,
         dir: &str,
         local_path: &Path,
+        sigint: &Arc<AtomicBool>,
     ) -> Result<(), Error> {
         // Check bucket exist or not.
         let exists: bool = self
@@ -76,9 +78,13 @@ impl Agent {
 
         // Download objects
         for object in targets {
-            info!("Downloading: {}", object);
-            let local_file = local_path.join(object.split('/').last().unwrap());
-            self.download_object(bucket, object, &local_file).await?;
+            if sigint.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+            let obj_file = object.split('/').last().unwrap();
+            let obj_file_path = local_path.join(obj_file);
+            info!("Downloading: {}", obj_file);
+            self.download_object(bucket, object, &obj_file_path).await?;
         }
 
         Ok(())
