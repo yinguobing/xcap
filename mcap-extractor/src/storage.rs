@@ -5,7 +5,10 @@ use minio::s3::{
     creds::StaticProvider,
     http::BaseUrl,
 };
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -47,12 +50,12 @@ impl Agent {
         &self,
         bucket: &str,
         dir: &str,
-        local_path: &PathBuf,
+        local_path: &Path,
     ) -> Result<(), Error> {
         // Check bucket exist or not.
         let exists: bool = self
             .client
-            .bucket_exists(&BucketExistsArgs::new(&bucket)?)
+            .bucket_exists(&BucketExistsArgs::new(bucket)?)
             .await?;
         if !exists {
             error!("Bucket {} does not exist.", bucket);
@@ -90,7 +93,7 @@ impl Agent {
         // Check bucket exist or not.
         let exists: bool = self
             .client
-            .bucket_exists(&BucketExistsArgs::new(&bucket)?)
+            .bucket_exists(&BucketExistsArgs::new(bucket)?)
             .await?;
         if !exists {
             error!("Bucket {} does not exist.", bucket);

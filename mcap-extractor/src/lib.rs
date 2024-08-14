@@ -72,7 +72,7 @@ fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, ExtractorError> {
                 .entry(chn.0)
                 .and_modify(|t| {
                     t.id = chn.0;
-                    t.name = chn.1.topic.clone();
+                    t.name.clone_from(&chn.1.topic);
                     t.description = format!(
                         "MsgType: {}, Encoding: {}",
                         chn.1.schema.as_ref().unwrap().name,

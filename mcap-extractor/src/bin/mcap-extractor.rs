@@ -4,7 +4,6 @@ use log::{error, info};
 use mcap_extractor::storage::Agent;
 use rand::Rng;
 use std::{env, fs, path::PathBuf};
-use tokio;
 use url::Url;
 
 #[derive(Parser, Debug)]
@@ -40,6 +39,7 @@ async fn main() {
     }
 
     // Download from remote server?
+    let mut download_path: Option<PathBuf> = None;
     if input_src.starts_with("http") {
         let valid_url = match Url::parse(&input_src) {
             Ok(url) => url,
@@ -71,11 +71,20 @@ async fn main() {
             .trim_start_matches(bucket)
             .trim_start_matches('/')
             .trim_end_matches(obj_name)
-            .trim_end_matches("/");
+            .trim_end_matches('/');
 
-        let region = env::var("S3_REGION").expect("`S3_REGION` not set.");
-        let access_key = env::var("S3_ACCESS_KEY").expect("`S3_REGION` not set.");
-        let secret_key = env::var("S3_SECRET_KEY").expect("`S3_REGION` not set.");
+        let Ok(region) = env::var("S3_REGION") else {
+            error!("Environment variable `S3_REGION` not set.");
+            return;
+        };
+        let Ok(access_key) = env::var("S3_ACCESS_KEY") else {
+            error!("Environment variable `S3_ACCESS_KEY` not set.");
+            return;
+        };
+        let Ok(secret_key) = env::var("S3_SECRET_KEY") else {
+            error!("Environment variable `S3_SECRET_KEY` not set.");
+            return;
+        };
 
         let storage = match Agent::new(&base_url, &region, &access_key, &secret_key) {
             Ok(agent) => agent,
@@ -94,13 +103,14 @@ async fn main() {
                 CHARSET[idx] as char
             })
             .collect();
-        let local_path = PathBuf::from(format!("/tmp/{}-{}", bucket, rand_str));
-        match std::fs::create_dir_all(&local_path) {
+        let _down_path = PathBuf::from(format!("/tmp/{}-{}", bucket, rand_str));
+        download_path = Some(_down_path.clone());
+        match std::fs::create_dir_all(&_down_path) {
             Ok(_) => {}
             Err(e) => {
                 error!(
                     "Failed to create download directory: {}, {}",
-                    local_path.display(),
+                    _down_path.display(),
                     e
                 );
                 return;
@@ -108,7 +118,7 @@ async fn main() {
         }
 
         info!("Downloading objects from: {}", object_dir);
-        match storage.download_dir(bucket, object_dir, &local_path).await {
+        match storage.download_dir(bucket, object_dir, &_down_path).await {
             Ok(_) => {
                 info!("Download succeeded.");
             }
@@ -117,9 +127,9 @@ async fn main() {
                 return;
             }
         }
-        input_src = local_path.into_os_string().into_string().unwrap();
+        input_src = _down_path.into_os_string().into_string().unwrap();
     } else {
-        input_src = args.input.clone();
+        input_src.clone_from(&args.input);
     }
 
     let input_dir = PathBuf::from(input_src);
@@ -155,6 +165,16 @@ async fn main() {
         Err(e) => {
             error!("{}", e);
             info!("Sorry, job failed.");
+        }
+    }
+
+    // Cleanup
+    if let Some(path) = download_path {
+        match std::fs::remove_dir_all(path) {
+            Ok(_) => {}
+            Err(e) => {
+                error!("Failed to remove download directory: {}", e);
+            }
         }
     }
 }
