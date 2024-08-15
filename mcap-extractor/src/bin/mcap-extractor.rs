@@ -139,9 +139,11 @@ async fn prepare_inputs(
 fn cleanup(local_path: &Option<PathBuf>) {
     if let Some(path) = local_path {
         match std::fs::remove_dir_all(path) {
-            Ok(_) => {}
+            Ok(_) => {
+                info!("Temp directory cleaned.");
+            }
             Err(e) => {
-                error!("Failed to remove directory: {}", e);
+                error!("Failed to remove directory: {}. {}", path.display(), e);
             }
         }
     }
@@ -173,6 +175,7 @@ async fn main() {
         Ok(f) => f,
         Err(e) => {
             error!("{}", e.0);
+            cleanup(&download_path);
             return;
         }
     };
@@ -182,6 +185,7 @@ async fn main() {
     }
     if files.is_empty() {
         error!("No MCAP files found.");
+        cleanup(&download_path);
         return;
     }
     info!("Found MCAP files: {}", files.len());
@@ -194,6 +198,7 @@ async fn main() {
         Ok(t) => t,
         Err(e) => {
             error!("{}", e);
+            cleanup(&download_path);
             return;
         }
     };
@@ -208,7 +213,13 @@ async fn main() {
     // Process
     info!("Extracting...");
     info!("Output directory: {}", output_dir.display());
-    match mcap_extractor::process(&files, &output_dir, &args.topic, sigint) {
+    let ret = mcap_extractor::process(&files, &output_dir, &args.topic, sigint);
+
+    // Cleanup
+    cleanup(&download_path);
+
+    // Take aways
+    match ret {
         Ok(_) => {
             info!("Done.");
         }
@@ -217,7 +228,4 @@ async fn main() {
             info!("Sorry, job failed.");
         }
     }
-
-    // Cleanup
-    cleanup(&download_path);
 }
