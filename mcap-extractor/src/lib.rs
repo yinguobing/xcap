@@ -1,6 +1,6 @@
 use extractor::Extractor;
 use indicatif::{ProgressBar, ProgressStyle};
-use log::{error, info};
+use log::error;
 use std::sync::{atomic::AtomicBool, Arc};
 use std::{
     collections::HashMap,
@@ -12,6 +12,7 @@ use std::{
 
 mod extractor;
 mod h264;
+mod pointcloud;
 pub mod storage;
 
 #[derive(thiserror::Error, Debug)]
@@ -134,8 +135,6 @@ pub fn process(
         return Err(Error::InvalidTopic(topic_name.clone()));
     };
 
-    info!("- Extracting H.264...");
-
     // Setup a progress bar.
     let spinner_style = ProgressStyle::default_spinner()
         .template("{prefix:} {spinner} {wide_msg}")
@@ -149,6 +148,7 @@ pub fn process(
     let output_dir = output_dir.join(sub_dir);
     fs::create_dir_all(&output_dir)?;
 
+    // Enmerate all files
     let mut parser = h264::Parser::new(&output_dir);
     let mut counter = 0;
     for file in files.iter() {
@@ -169,7 +169,6 @@ pub fn process(
     bar.finish();
 
     // Post process
-    info!("- Extracting frames...");
     parser.post_process(sigint)?;
 
     Ok(())
