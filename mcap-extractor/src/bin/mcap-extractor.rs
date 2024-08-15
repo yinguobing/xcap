@@ -225,7 +225,7 @@ async fn main() {
         }
         Err(e) => {
             error!("{}", e);
-            info!("Sorry, job failed.");
+            warn!("Sorry, job failed.");
         }
     }
 }
