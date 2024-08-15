@@ -1,3 +1,4 @@
+use extractor::Extractor;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{error, info};
 use std::sync::{atomic::AtomicBool, Arc};
@@ -8,21 +9,23 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
-use thiserror::Error;
 
+mod extractor;
 mod h264;
 pub mod storage;
 
-#[derive(Error, Debug)]
-pub enum ExtractorError {
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
     #[error("Failed to read summary info: {0}")]
     NoSummary(String),
     #[error("Failed to read statistics info: {0}")]
     NoStatistics(String),
     #[error("Invalid topic. {0}")]
     InvalidTopic(String),
-    #[error("Failed to create directory. {0}")]
-    OutputIOError(#[from] io::Error),
+    #[error("McapError. {0}")]
+    McapError(#[from] mcap::McapError),
+    #[error("IO error. {0}")]
+    IOError(#[from] io::Error),
     #[error("Interupted")]
     Interupted,
     #[error("H.264 error. {0}")]
@@ -55,24 +58,26 @@ impl std::fmt::Display for Topic {
     }
 }
 
-pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, ExtractorError> {
+pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
+    // Collect all topics
     let mut topics: HashMap<u16, Topic> = HashMap::new();
+
+    // Enemerate all files
     for file in files {
-        let mut fd = fs::File::open(file).unwrap();
+        // Read summary
+        let mut fd = fs::File::open(file)?;
         let mut buf = Vec::new();
-        fd.read_to_end(&mut buf).unwrap();
-        let Some(summary) = mcap::read::Summary::read(&buf).unwrap() else {
-            return Err(ExtractorError::NoSummary(file.display().to_string()));
-        };
+        fd.read_to_end(&mut buf)?;
+        let summary =
+            mcap::read::Summary::read(&buf)?.ok_or(Error::NoSummary(file.display().to_string()))?;
 
         // Statistics
-        let Some(stats) = summary.stats else {
-            return Err(ExtractorError::NoStatistics(file.display().to_string()));
-        };
+        let stats = summary
+            .stats
+            .ok_or(Error::NoStatistics(file.display().to_string()))?;
 
         // Topics
-        let channels: Vec<_> = summary.channels.into_iter().collect();
-        for chn in channels {
+        for chn in summary.channels {
             topics
                 .entry(chn.0)
                 .and_modify(|t| {
@@ -116,18 +121,17 @@ pub fn process(
     output_dir: &Path,
     topic_name: &Option<String>,
     sigint: Arc<AtomicBool>,
-) -> Result<(), ExtractorError> {
+) -> Result<(), Error> {
     // Get all topics
     let topics = summary(files)?;
 
     // Topic name valid?
-    let Some(topic_name) = topic_name.clone() else {
-        return Err(ExtractorError::InvalidTopic(
-            "No topic specified. Use `--topic` to set topic.".to_string(),
-        ));
-    };
-    let Some(_) = topics.iter().find(|t| t.name == topic_name) else {
-        return Err(ExtractorError::InvalidTopic(topic_name));
+    let topic_name = topic_name.as_ref().ok_or(Error::InvalidTopic(
+        "No topic specified. Use `--topic` to set topic.".to_string(),
+    ))?;
+
+    let Some(_) = topics.iter().find(|t| &t.name == topic_name) else {
+        return Err(Error::InvalidTopic(topic_name.clone()));
     };
 
     info!("- Extracting H.264...");
@@ -148,27 +152,25 @@ pub fn process(
     let mut parser = h264::Parser::new(&output_dir);
     let mut counter = 0;
     for file in files.iter() {
-        let mut fd = fs::File::open(file).unwrap();
+        let mut fd = fs::File::open(file)?;
         let mut buf = Vec::new();
-        fd.read_to_end(&mut buf).unwrap();
-        let stream = mcap::MessageStream::new(&buf)
-            .unwrap()
-            .filter(|x| x.as_ref().is_ok_and(|x| x.channel.topic == topic_name));
+        fd.read_to_end(&mut buf)?;
+        let stream = mcap::MessageStream::new(&buf)?
+            .filter(|x| x.as_ref().is_ok_and(|x| &x.channel.topic == topic_name));
         for message in stream {
             if sigint.load(std::sync::atomic::Ordering::Relaxed) {
-                return Err(ExtractorError::Interupted);
+                return Err(Error::Interupted);
             }
-            let message = message.unwrap();
-            parser.accumulate(&message);
+            parser.step(&message?)?;
             counter += 1;
             bar.set_message(format!("{} {}", topic_name, counter));
         }
     }
     bar.finish();
 
-    // Dump frames
+    // Post process
     info!("- Extracting frames...");
-    parser.dump_frames(sigint)?;
+    parser.post_process(sigint)?;
 
     Ok(())
 }

@@ -1,3 +1,4 @@
+use crate::extractor::Extractor;
 use indicatif::{ProgressBar, ProgressStyle};
 use mcap::Message;
 use openh264::{decoder::Decoder, formats::YUVSource, nal_units};
@@ -11,8 +12,12 @@ use std::{
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Interupted")]
+    #[error("Interupted.")]
     Interupted,
+    #[error("ZSTD error. {0}")]
+    Zstd(#[from] std::io::Error),
+    #[error("CDR error. {0}")]
+    CDR(#[from] cdr::Error),
 }
 
 pub struct Parser {
@@ -46,20 +51,24 @@ impl Parser {
             h264_decoder,
         }
     }
+}
 
-    pub fn accumulate(&mut self, message: &Message) {
+impl Extractor for Parser {
+    type Error = Error;
+    fn step(&mut self, message: &Message) -> Result<(), Error> {
         self.timestamps.push(message.publish_time);
         let m: &[u8] = message.data.as_ref();
-        let decompressed = zstd::stream::decode_all(m).unwrap();
+        let decompressed = zstd::stream::decode_all(m).map_err(|e| Error::Zstd(e))?;
         let img = cdr::deserialize_from::<_, CompressedImage, _>(
             decompressed.as_slice(),
             cdr::size::Infinite,
         )
-        .unwrap();
-        self.writer.write_all(&img.data).unwrap();
+        .map_err(|e| Error::CDR(e))?;
+        self.writer.write_all(&img.data)?;
+        Ok::<(), Error>(())
     }
 
-    pub fn dump_frames(&mut self, sigint: Arc<AtomicBool>) -> Result<(), Error> {
+    fn post_process(&mut self, sigint: Arc<AtomicBool>) -> Result<(), Error> {
         // Safety
         self.writer.flush().unwrap();
 
