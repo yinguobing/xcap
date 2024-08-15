@@ -10,19 +10,19 @@ use url::Url;
 struct RuntimeError(String);
 
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about = "Extract ROS messages from MCAP files.")]
 struct Args {
-    /// Input resorce
+    /// Input resorce. Could be a local directory or a remote S3 URL.
     #[arg(short, long)]
     input: String,
 
-    /// Output directory path
+    /// Output directory path.
     #[arg(short, long)]
     output_dir: Option<PathBuf>,
 
-    /// H264 topic
+    /// Topics to be extracted, seperated by comma. Example: "topic,another/topic,/yet/another/topic"
     #[arg(long)]
-    topic: Option<String>,
+    topics: Option<String>,
 }
 
 /// Prepare inputs. Download from remote server if necessary.
@@ -209,11 +209,11 @@ async fn main() {
 
     // Output directory
     let output_dir = args.output_dir.unwrap_or(std::env::current_dir().unwrap());
+    info!("Output directory: {}", output_dir.display());
 
     // Process
     info!("Extracting...");
-    info!("Output directory: {}", output_dir.display());
-    let ret = mcap_extractor::process(&files, &output_dir, &args.topic, sigint);
+    let ret = mcap_extractor::process(&files, &output_dir, &args.topics, sigint);
 
     // Cleanup
     cleanup(&download_path);
