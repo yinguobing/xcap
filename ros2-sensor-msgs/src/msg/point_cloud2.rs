@@ -25,13 +25,13 @@ use serde::Deserialize;
 /// uint32 count # How many elements in the field
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 pub struct PointCloud2 {
-    header: Header,
-    height: u32,
-    width: u32,
-    fields: PointField,
-    is_bigendian: bool,
-    point_step: u32,
-    row_step: u32,
-    data: Vec<u8>,
-    is_dense: bool,
+    pub header: Header,
+    pub height: u32,
+    pub width: u32,
+    pub fields: Vec<PointField>,
+    pub is_bigendian: u8,
+    pub point_step: u32,
+    pub row_step: u32,
+    pub data: Vec<u8>,
+    pub is_dense: u8,
 }

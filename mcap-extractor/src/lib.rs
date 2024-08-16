@@ -144,11 +144,17 @@ pub fn process(
             "sensor_msgs/msg/CompressedImage" => {
                 parsers.insert(topic.name.clone(), Box::new(h264::Parser::new(&output_dir)));
             }
-            _ => {
-                error!(
-                    "Unsupported topic format: {}, will be skipped",
-                    topic.format
+            "sensor_msgs/msg/PointCloud2" => {
+                parsers.insert(
+                    topic.name.clone(),
+                    Box::new(pointcloud::Parser::new(&output_dir)),
                 );
+            }
+            _ => {
+                return Err(Error::InvalidTopic(format!(
+                    "Topic format not supported: {}",
+                    topic.format
+                )));
             }
         }
 
@@ -167,7 +173,7 @@ pub fn process(
 
     // Enmerate all files
     let mut counter = 0;
-    for file in files.iter() {
+    'file_loop: for file in files.iter() {
         // Read in files
         let mut fd = fs::File::open(file)?;
         let mut buf = Vec::new();
@@ -187,6 +193,9 @@ pub fn process(
             parser
                 .step(&msg)
                 .map_err(|e| Error::ParserError(e.to_string()))?;
+            if topic_name == "/livox/lidar" {
+                break 'file_loop;
+            }
             counter += 1;
             bar.set_message(format!("{} {}", topic_name, counter));
         }
