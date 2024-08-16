@@ -207,13 +207,37 @@ async fn main() {
         info!("- {}", topic);
     }
 
+    // Check target topics to make sure they make sense for extraction
+    let Some(topic_str) = args.topics else {
+        error!("No topic specified. Use `--topics` to set topics.");
+        cleanup(&download_path);
+        return;
+    };
+    let target_topics = topic_str
+        .trim()
+        .split(',')
+        .map(|t| t.to_string())
+        .collect::<Vec<_>>();
+    if target_topics.is_empty() {
+        error!("No topic specified. Use `--topics` to set topics.");
+        cleanup(&download_path);
+        return;
+    }
+    for topic_name in target_topics.iter() {
+        let Some(_) = topics.iter().find(|t| t.name == *topic_name) else {
+            error!("Topic not found: {}", topic_name);
+            cleanup(&download_path);
+            return;
+        };
+    }
+
     // Output directory
     let output_dir = args.output_dir.unwrap_or(std::env::current_dir().unwrap());
     info!("Output directory: {}", output_dir.display());
 
     // Process
     info!("Extracting...");
-    let ret = mcap_extractor::process(&files, &output_dir, &args.topics, sigint);
+    let ret = mcap_extractor::process(&files, &output_dir, &target_topics, sigint);
 
     // Cleanup
     cleanup(&download_path);

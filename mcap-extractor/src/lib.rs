@@ -31,22 +31,25 @@ pub enum Error {
     Interupted,
     #[error("H.264 error. {0}")]
     H264Error(#[from] h264::Error),
+    #[error("Failed to parse message. {0}")]
+    ParserError(String),
     #[error("unknown error")]
     Unknown,
 }
 
 pub struct Topic {
-    id: u16,
-    name: String,
-    description: String,
-    msg_count: Option<u64>,
+    pub id: u16,
+    pub name: String,
+    pub format: String,
+    pub description: String,
+    pub msg_count: Option<u64>,
 }
 
 impl std::fmt::Display for Topic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}, {}, msgs: {}, {}",
+            "{}, {}, msgs: {}, {}, {}",
             self.id,
             self.name,
             if self.msg_count.is_some() {
@@ -54,6 +57,7 @@ impl std::fmt::Display for Topic {
             } else {
                 "Unknown".to_owned()
             },
+            self.format,
             self.description
         )
     }
@@ -84,11 +88,9 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
                 .and_modify(|t| {
                     t.id = chn.0;
                     t.name.clone_from(&chn.1.topic);
-                    t.description = format!(
-                        "MsgType: {}, Encoding: {}",
-                        chn.1.schema.as_ref().unwrap().name,
-                        chn.1.schema.as_ref().unwrap().encoding
-                    );
+                    t.format.clone_from(&chn.1.schema.as_ref().unwrap().name);
+                    t.description =
+                        format!("Encoding: {}", chn.1.schema.as_ref().unwrap().encoding);
                     t.msg_count = if t.msg_count.is_some()
                         && stats.channel_message_counts.contains_key(&chn.0)
                     {
@@ -103,11 +105,8 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
                 .or_insert(Topic {
                     id: chn.0,
                     name: chn.1.topic.clone(),
-                    description: format!(
-                        "MsgType: {}, Encoding: {}",
-                        chn.1.schema.as_ref().unwrap().name,
-                        chn.1.schema.as_ref().unwrap().encoding
-                    ),
+                    format: chn.1.schema.as_ref().unwrap().name.clone(),
+                    description: format!("Encoding: {}", chn.1.schema.as_ref().unwrap().encoding),
                     msg_count: stats.channel_message_counts.get(&chn.0).copied(),
                 });
         }
@@ -120,20 +119,43 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
 pub fn process(
     files: &Vec<PathBuf>,
     output_dir: &Path,
-    topic_name: &Option<String>,
+    topic_names: &Vec<String>,
     sigint: Arc<AtomicBool>,
 ) -> Result<(), Error> {
     // Get all topics
     let topics = summary(files)?;
 
-    // Topic name valid?
-    let topic_name = topic_name.as_ref().ok_or(Error::InvalidTopic(
-        "No topic specified. Use `--topic` to set topic.".to_string(),
-    ))?;
+    // Create a parser group for all different topics.
+    let mut parsers: HashMap<
+        String,
+        Box<dyn Extractor<ExtractorError = Box<dyn std::error::Error>>>,
+    > = HashMap::new();
+    for topic_name in topic_names {
+        // Locate corresponding topic
+        let topic = topics
+            .iter()
+            .find(|x| x.name == *topic_name)
+            .ok_or(Error::InvalidTopic(format!(
+                "Topic not found: {}",
+                topic_name
+            )))?;
 
-    let Some(_) = topics.iter().find(|t| &t.name == topic_name) else {
-        return Err(Error::InvalidTopic(topic_name.clone()));
-    };
+        match topic.format.as_str() {
+            "sensor_msgs/msg/CompressedImage" => {
+                parsers.insert(topic.name.clone(), Box::new(h264::Parser::new(&output_dir)));
+            }
+            _ => {
+                error!(
+                    "Unsupported topic format: {}, will be skipped",
+                    topic.format
+                );
+            }
+        }
+
+        // Using topic name as output directory path
+        let output_dir = output_dir.join(PathBuf::from(topic_name.trim_start_matches('/')));
+        fs::create_dir_all(&output_dir)?;
+    }
 
     // Setup a progress bar.
     let spinner_style = ProgressStyle::default_spinner()
@@ -143,25 +165,28 @@ pub fn process(
     bar.set_style(spinner_style);
     bar.enable_steady_tick(Duration::from_millis(100));
 
-    // Using topic name as directory path
-    let sub_dir = PathBuf::from(topic_name.trim_start_matches('/'));
-    let output_dir = output_dir.join(sub_dir);
-    fs::create_dir_all(&output_dir)?;
-
     // Enmerate all files
-    let mut parser = h264::Parser::new(&output_dir);
     let mut counter = 0;
     for file in files.iter() {
+        // Read in files
         let mut fd = fs::File::open(file)?;
         let mut buf = Vec::new();
         fd.read_to_end(&mut buf)?;
-        let stream = mcap::MessageStream::new(&buf)?
-            .filter(|x| x.as_ref().is_ok_and(|x| &x.channel.topic == topic_name));
-        for message in stream {
+
+        // Enumerate all messages
+        for message in mcap::MessageStream::new(&buf)? {
             if sigint.load(std::sync::atomic::Ordering::Relaxed) {
                 return Err(Error::Interupted);
             }
-            parser.step(&message?)?;
+            let msg = message?;
+            let topic_name = msg.channel.topic.as_str();
+            let Some(parser) = parsers.get_mut(topic_name) else {
+                counter += 1;
+                continue;
+            };
+            parser
+                .step(&msg)
+                .map_err(|e| Error::ParserError(e.to_string()))?;
             counter += 1;
             bar.set_message(format!("{} {}", topic_name, counter));
         }
@@ -169,7 +194,11 @@ pub fn process(
     bar.finish();
 
     // Post process
-    parser.post_process(sigint)?;
+    for parser in parsers.values_mut() {
+        parser
+            .post_process(sigint.clone())
+            .map_err(|e| Error::ParserError(e.to_string()))?;
+    }
 
     Ok(())
 }

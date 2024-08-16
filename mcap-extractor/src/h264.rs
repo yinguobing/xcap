@@ -1,6 +1,5 @@
 use crate::extractor::Extractor;
 use indicatif::{ProgressBar, ProgressStyle};
-use log::info;
 use mcap::Message;
 use openh264::{decoder::Decoder, formats::YUVSource, nal_units};
 use ros2_sensor_msgs::msg::CompressedImage;
@@ -60,8 +59,9 @@ impl Parser {
 }
 
 impl Extractor for Parser {
-    type Error = Error;
-    fn step(&mut self, message: &Message) -> Result<(), Error> {
+    type ExtractorError = Box<dyn std::error::Error>;
+
+    fn step(&mut self, message: &Message) -> Result<(), Self::ExtractorError> {
         self.timestamps.push(message.publish_time);
         let m: &[u8] = message.data.as_ref();
         let decompressed = zstd::stream::decode_all(m).map_err(|e| Error::Zstd(e))?;
@@ -74,7 +74,7 @@ impl Extractor for Parser {
         Ok(())
     }
 
-    fn post_process(&mut self, sigint: Arc<AtomicBool>) -> Result<(), Error> {
+    fn post_process(&mut self, sigint: Arc<AtomicBool>) -> Result<(), Self::ExtractorError> {
         // Create output directory for frames
         fs::create_dir_all(&self.frame_out)?;
 
@@ -94,7 +94,7 @@ impl Extractor for Parser {
         let mut idx: usize = 0;
         for packet in nal_units(&self.h264_cache.as_slice()) {
             if sigint.load(std::sync::atomic::Ordering::Relaxed) {
-                return Err(Error::Interupted);
+                return Err(Box::new(Error::Interupted));
             }
             // On the first few frames this may fail, so you should check the result
             // a few packets before giving up.

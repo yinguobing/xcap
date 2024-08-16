@@ -24,3 +24,17 @@ pub struct CompressedImage {
     pub format: String,
     pub data: Vec<u8>,
 }
+
+impl CompressedImage {
+    pub fn new(header: Header, format: String, data: Vec<u8>) -> Self {
+        CompressedImage {
+            header,
+            format,
+            data,
+        }
+    }
+
+    pub fn name() -> &'static str {
+        "CompressedImage"
+    }
+}
