@@ -3,7 +3,7 @@ use mcap::Message;
 use ros2_sensor_msgs::msg::PointCloud2;
 use std::{
     fs,
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Arc},
 };

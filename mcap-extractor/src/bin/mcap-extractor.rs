@@ -12,7 +12,7 @@ struct RuntimeError(String);
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = "Extract ROS messages from MCAP files.")]
 struct Args {
-    /// Input resorce. Could be a local directory or a remote S3 URL.
+    /// Input resource. Could be a local directory or a remote S3 URL.
     #[arg(short, long)]
     input: String,
 
@@ -20,7 +20,7 @@ struct Args {
     #[arg(short, long)]
     output_dir: Option<PathBuf>,
 
-    /// Topics to be extracted, seperated by comma. Example: "topic,another/topic,/yet/another/topic"
+    /// Topics to be extracted, separated by comma. Example: "topic,another/topic,/yet/another/topic"
     #[arg(long)]
     topics: Option<String>,
 }
