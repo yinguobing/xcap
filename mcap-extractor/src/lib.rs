@@ -1,13 +1,12 @@
 use extractor::Extractor;
-use indicatif::{ProgressBar, ProgressStyle};
-use log::error;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use log::{error, info};
 use std::sync::{atomic::AtomicBool, Arc};
 use std::{
     collections::HashMap,
     fs,
     io::{self, Read},
     path::{Path, PathBuf},
-    time::Duration,
 };
 
 mod extractor;
@@ -125,9 +124,19 @@ pub fn process(
     // Get all topics
     let topics = summary(files)?;
 
+    // Setup a progress bar as this could be a time consuming process.
+    let bars = MultiProgress::new();
+    let sty = ProgressStyle::with_template(
+        "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
+    )
+    .unwrap()
+    .progress_chars("##-");
+    let mut bar_handles: HashMap<&str, ProgressBar> = HashMap::new();
+    let mut bar_progress: HashMap<&str, u32> = HashMap::new();
+
     // Create a parser group for all different topics.
     let mut parsers: HashMap<
-        String,
+        &str,
         Box<dyn Extractor<ExtractorError = Box<dyn std::error::Error>>>,
     > = HashMap::new();
     for topic_name in topic_names {
@@ -147,11 +156,14 @@ pub fn process(
         // Create parser by topic format
         match topic.format.as_str() {
             "sensor_msgs/msg/CompressedImage" => {
-                parsers.insert(topic.name.clone(), Box::new(h264::Parser::new(&output_dir)));
+                parsers.insert(
+                    topic.name.as_str(),
+                    Box::new(h264::Parser::new(&output_dir)),
+                );
             }
             "sensor_msgs/msg/PointCloud2" => {
                 parsers.insert(
-                    topic.name.clone(),
+                    topic.name.as_str(),
                     Box::new(pointcloud::Parser::new(&output_dir)),
                 );
             }
@@ -162,18 +174,19 @@ pub fn process(
                 )));
             }
         }
+
+        // Init progress bars
+        bar_handles.insert(
+            topic_name,
+            bars.add(ProgressBar::new(topic.msg_count.unwrap_or(0))),
+        );
+        for h in bar_handles.values_mut() {
+            h.set_style(sty.clone());
+        }
+        bar_progress.insert(topic_name, 0);
     }
 
-    // Setup a progress bar.
-    let spinner_style = ProgressStyle::default_spinner()
-        .template("{prefix:} {spinner} {wide_msg}")
-        .unwrap();
-    let bar = ProgressBar::new_spinner();
-    bar.set_style(spinner_style);
-    bar.enable_steady_tick(Duration::from_millis(100));
-
     // Enumerate all files
-    let mut counter = 0;
     for file in files.iter() {
         // Read in files
         let mut fd = fs::File::open(file)?;
@@ -188,20 +201,29 @@ pub fn process(
             let msg = message?;
             let topic_name = msg.channel.topic.as_str();
             let Some(parser) = parsers.get_mut(topic_name) else {
-                counter += 1;
                 continue;
             };
+
             parser
                 .step(&msg)
                 .map_err(|e| Error::ParserError(e.to_string()))?;
-            counter += 1;
-            bar.set_message(format!("{} {}", topic_name, counter));
+
+            bar_progress
+                .get_mut(topic_name)
+                .unwrap()
+                .checked_add(1)
+                .unwrap();
+
+            let bar = bar_handles.get(topic_name).unwrap();
+            bar.set_message(topic_name.to_string());
+            bar.inc(1);
         }
     }
-    bar.finish();
 
     // Post process
-    for parser in parsers.values_mut() {
+    info!("Post processing...");
+    for (name, parser) in parsers.iter_mut() {
+        info!("- {}", name);
         parser
             .post_process(sigint.clone())
             .map_err(|e| Error::ParserError(e.to_string()))?;
