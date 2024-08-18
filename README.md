@@ -1,22 +1,23 @@
 # mcap-extractor
-This is a tool to extract data from MCAP files.
+Single binary to extract ROS messages from MCAP files.
 
 ## Features
-- Extract raw H.264 data and frames from splited MCAP files.
-- Support MinIO as direct input source.
+- Messages: CompressedImage, PointCloud2
+- Support sliced MCAP files.
+- Support MinIO as input source.
 
 ## Usage
-Extract raw H.264 data and frames from a directory containing multiple MCAP files.
+Extract from a local directory containing multiple MCAP files
 ```bash
-mcap-extractor -i /path/to/mcap/dir -o /path/to/output --topic="your_h264_topic"
+mcap-extractor -i /path/to/mcap/dir -o /path/to/output --topics="/h264,/lidar"
 ```
 
-Extract raw H.264 data and frames from a MinIO bucket.
+Extract from a MinIO bucket:
 ```bash
 export S3_ACCESS_KEY="YOUR_KEY"
 export S3_SECRET_KEY="YOUR_SECRET"
 export S3_REGION="YOUR_REGION"
-mcap-extractor -i "http://your_minio:port/bucket_name/path/to/one_of_the_mcap_file.mcap" -o /path/to/output --topic="your_h264_topic"
+mcap-extractor -i "http://your_minio:port/bucket_name/path/to/one_of_the_mcap_file.mcap" -o /path/to/output --topics="/h264,/lidar"
 ```
 
 ## Build
