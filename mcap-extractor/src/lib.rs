@@ -173,7 +173,7 @@ pub fn process(
 
     // Enumerate all files
     let mut counter = 0;
-    'file_loop: for file in files.iter() {
+    for file in files.iter() {
         // Read in files
         let mut fd = fs::File::open(file)?;
         let mut buf = Vec::new();
