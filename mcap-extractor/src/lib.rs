@@ -27,8 +27,8 @@ pub enum Error {
     McapError(#[from] mcap::McapError),
     #[error("IO error. {0}")]
     IOError(#[from] io::Error),
-    #[error("Interupted")]
-    Interupted,
+    #[error("Interrupted")]
+    Interrupted,
     #[error("H.264 error. {0}")]
     H264Error(#[from] h264::Error),
     #[error("Failed to parse message. {0}")]
@@ -67,7 +67,7 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
     // Collect all topics
     let mut topics: HashMap<u16, Topic> = HashMap::new();
 
-    // Enemerate all files
+    // Enumerate all files
     for file in files {
         // Read summary
         let mut fd = fs::File::open(file)?;
@@ -171,7 +171,7 @@ pub fn process(
     bar.set_style(spinner_style);
     bar.enable_steady_tick(Duration::from_millis(100));
 
-    // Enmerate all files
+    // Enumerate all files
     let mut counter = 0;
     'file_loop: for file in files.iter() {
         // Read in files
@@ -182,7 +182,7 @@ pub fn process(
         // Enumerate all messages
         for message in mcap::MessageStream::new(&buf)? {
             if sigint.load(std::sync::atomic::Ordering::Relaxed) {
-                return Err(Error::Interupted);
+                return Err(Error::Interrupted);
             }
             let msg = message?;
             let topic_name = msg.channel.topic.as_str();
@@ -193,9 +193,6 @@ pub fn process(
             parser
                 .step(&msg)
                 .map_err(|e| Error::ParserError(e.to_string()))?;
-            if topic_name == "/livox/lidar" {
-                break 'file_loop;
-            }
             counter += 1;
             bar.set_message(format!("{} {}", topic_name, counter));
         }

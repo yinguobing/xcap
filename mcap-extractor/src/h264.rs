@@ -12,8 +12,8 @@ use std::{
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Interupted.")]
-    Interupted,
+    #[error("Interrupted.")]
+    Interrupted,
     #[error("Insufficient timestamp.")]
     Timestamp,
     #[error("Init image from buf failed.")]
@@ -94,7 +94,7 @@ impl Extractor for Parser {
         let mut idx: usize = 0;
         for packet in nal_units(&self.h264_cache.as_slice()) {
             if sigint.load(std::sync::atomic::Ordering::Relaxed) {
-                return Err(Box::new(Error::Interupted));
+                return Err(Box::new(Error::Interrupted));
             }
             // On the first few frames this may fail, so you should check the result
             // a few packets before giving up.

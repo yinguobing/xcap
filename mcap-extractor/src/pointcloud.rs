@@ -14,8 +14,6 @@ pub enum Error {
     Zstd(#[from] std::io::Error),
     #[error("CDR error. {0}")]
     CDR(#[from] cdr::Error),
-    #[error("Unknown error.")]
-    Unknown,
 }
 
 pub struct Parser {
@@ -39,11 +37,6 @@ impl Extractor for Parser {
     fn step(&mut self, message: &Message) -> Result<(), Self::ExtractorError> {
         let m: &[u8] = message.data.as_ref();
         let decompressed = zstd::stream::decode_all(m).map_err(|e| Error::Zstd(e))?;
-        // for v in decompressed[..8].iter() {
-        //     println!("{:x?}", v);
-        // }
-        // return Err(Box::new(Error::Unknown));
-
         let raw = cdr::deserialize_from::<_, PointCloud2, _>(
             decompressed.as_slice(),
             cdr::size::Infinite,
