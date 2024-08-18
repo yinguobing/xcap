@@ -2,36 +2,51 @@ use super::point_field::PointField;
 use ros2_std_msgs::msg::Header;
 use serde::Deserialize;
 
-/// This message holds the description of one point entry in the
-/// PointCloud2 message format.
+/// This message holds a collection of N-dimensional points, which may
+/// contain additional information such as normals, intensity, etc. The
 ///
-/// uint8 INT8 = 1
-/// uint8 UINT8 = 2
-/// uint8 INT16 = 3
-/// uint8 UINT16 = 4
-/// uint8 INT32 = 5
-/// uint8 UINT32 = 6
-/// uint8 FLOAT32 = 7
-/// uint8 FLOAT64 = 8
+/// point data is stored as a binary blob, its layout described by the
+/// contents of the "fields" array.
 ///
-/// Common PointField names are x, y, z, intensity, rgb, rgba
+/// The point cloud data may be organized 2d (image-like) or 1d (unordered).
 ///
-/// string name # Name of field
+/// Point clouds organized as 2d images may be produced by camera depth sensors
+/// such as stereo or time-of-flight.
 ///
-/// uint32 offset # Offset from start of point struct
 ///
-/// uint8 datatype # Datatype enumeration, see above
+/// Time of sensor data acquisition, and the coordinate frame ID (for 3d points).
 ///
-/// uint32 count # How many elements in the field
+/// std_msgs/Header header
+///
+/// 2D structure of the point cloud. If the cloud is unordered, height is
+/// 1 and width is the length of the point cloud.
+///
+/// uint32 height
+/// uint32 width
+///
+/// Describes the channels and their layout in the binary data blob.
+///
+/// PointField[] fields
+///
+/// bool is_bigendian # Is this data bigendian?
+///
+/// uint32 point_step # Length of a point in bytes
+///
+/// uint32 row_step # Length of a row in bytes
+///
+/// uint8[] data # Actual point data, size is (row_step*height)
+///
+///
+/// bool is_dense # True if there are no invalid points
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 pub struct PointCloud2 {
-    header: Header,
-    height: u32,
-    width: u32,
-    fields: PointField,
-    is_bigendian: bool,
-    point_step: u32,
-    row_step: u32,
-    data: Vec<u8>,
-    is_dense: bool,
+    pub header: Header,
+    pub height: u32,
+    pub width: u32,
+    pub fields: Vec<PointField>,
+    pub is_bigendian: u8,
+    pub point_step: u32,
+    pub row_step: u32,
+    pub data: Vec<u8>,
+    pub is_dense: u8,
 }

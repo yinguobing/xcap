@@ -10,19 +10,19 @@ use url::Url;
 struct RuntimeError(String);
 
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about = "Extract ROS messages from MCAP files.")]
 struct Args {
-    /// Input resorce
+    /// Input resource. Could be a local directory or a remote S3 URL.
     #[arg(short, long)]
     input: String,
 
-    /// Output directory path
+    /// Output directory path.
     #[arg(short, long)]
     output_dir: Option<PathBuf>,
 
-    /// H264 topic
+    /// Topics to be extracted, separated by comma. Example: "topic,another/topic,/yet/another/topic"
     #[arg(long)]
-    topic: Option<String>,
+    topics: Option<String>,
 }
 
 /// Prepare inputs. Download from remote server if necessary.
@@ -139,9 +139,11 @@ async fn prepare_inputs(
 fn cleanup(local_path: &Option<PathBuf>) {
     if let Some(path) = local_path {
         match std::fs::remove_dir_all(path) {
-            Ok(_) => {}
+            Ok(_) => {
+                info!("Temp directory cleaned.");
+            }
             Err(e) => {
-                error!("Failed to remove directory: {}", e);
+                error!("Failed to remove directory: {}. {}", path.display(), e);
             }
         }
     }
@@ -173,6 +175,7 @@ async fn main() {
         Ok(f) => f,
         Err(e) => {
             error!("{}", e.0);
+            cleanup(&download_path);
             return;
         }
     };
@@ -182,6 +185,7 @@ async fn main() {
     }
     if files.is_empty() {
         error!("No MCAP files found.");
+        cleanup(&download_path);
         return;
     }
     info!("Found MCAP files: {}", files.len());
@@ -194,6 +198,7 @@ async fn main() {
         Ok(t) => t,
         Err(e) => {
             error!("{}", e);
+            cleanup(&download_path);
             return;
         }
     };
@@ -202,22 +207,49 @@ async fn main() {
         info!("- {}", topic);
     }
 
+    // Check target topics to make sure they make sense for extraction
+    let Some(topic_str) = args.topics else {
+        error!("No topic specified. Use `--topics` to set topics.");
+        cleanup(&download_path);
+        return;
+    };
+    let target_topics = topic_str
+        .trim()
+        .split(',')
+        .map(|t| t.to_string())
+        .collect::<Vec<_>>();
+    if target_topics.is_empty() {
+        error!("No topic specified. Use `--topics` to set topics.");
+        cleanup(&download_path);
+        return;
+    }
+    for topic_name in target_topics.iter() {
+        let Some(_) = topics.iter().find(|t| t.name == *topic_name) else {
+            error!("Topic not found: {}", topic_name);
+            cleanup(&download_path);
+            return;
+        };
+    }
+
     // Output directory
     let output_dir = args.output_dir.unwrap_or(std::env::current_dir().unwrap());
+    info!("Output directory: {}", output_dir.display());
 
     // Process
     info!("Extracting...");
-    info!("Output directory: {}", output_dir.display());
-    match mcap_extractor::process(&files, &output_dir, &args.topic, sigint) {
+    let ret = mcap_extractor::process(&files, &output_dir, &target_topics, sigint);
+
+    // Cleanup
+    cleanup(&download_path);
+
+    // Take aways
+    match ret {
         Ok(_) => {
             info!("Done.");
         }
         Err(e) => {
             error!("{}", e);
-            info!("Sorry, job failed.");
+            warn!("Sorry, job failed.");
         }
     }
-
-    // Cleanup
-    cleanup(&download_path);
 }
