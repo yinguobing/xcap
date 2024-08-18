@@ -140,6 +140,11 @@ pub fn process(
                 topic_name
             )))?;
 
+        // Using topic name as output directory path
+        let output_dir = output_dir.join(PathBuf::from(topic_name.trim_start_matches('/')));
+        fs::create_dir_all(&output_dir)?;
+
+        // Create parser by topic format
         match topic.format.as_str() {
             "sensor_msgs/msg/CompressedImage" => {
                 parsers.insert(topic.name.clone(), Box::new(h264::Parser::new(&output_dir)));
@@ -157,10 +162,6 @@ pub fn process(
                 )));
             }
         }
-
-        // Using topic name as output directory path
-        let output_dir = output_dir.join(PathBuf::from(topic_name.trim_start_matches('/')));
-        fs::create_dir_all(&output_dir)?;
     }
 
     // Setup a progress bar.
