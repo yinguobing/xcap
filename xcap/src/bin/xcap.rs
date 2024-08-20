@@ -1,11 +1,11 @@
 use clap::Parser;
 use env_logger::Env;
 use log::{error, info, warn};
-use mcap_extractor::storage::Agent;
 use rand::Rng;
 use std::sync::atomic::AtomicBool;
 use std::{env, fs, path::PathBuf, sync::Arc};
 use url::Url;
+use xcap::{process, storage::Agent, summary};
 
 struct RuntimeError(String);
 
@@ -194,7 +194,7 @@ async fn main() {
     }
 
     // Summary this job, this will log useful info such as topics for user.
-    let topics = match mcap_extractor::summary(&files) {
+    let topics = match summary(&files) {
         Ok(t) => t,
         Err(e) => {
             error!("{}", e);
@@ -237,7 +237,7 @@ async fn main() {
 
     // Process
     info!("Extracting...");
-    let ret = mcap_extractor::process(&files, &output_dir, &target_topics, sigint);
+    let ret = process(&files, &output_dir, &target_topics, sigint);
 
     // Cleanup
     cleanup(&download_path);

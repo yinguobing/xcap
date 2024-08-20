@@ -1,5 +1,5 @@
 [package]
-name = "mcap-extractor"
+name = "xcap"
 description = "A simple MCAP extractor"
 version = "0.1.4"
 edition = "2021"
@@ -38,13 +38,13 @@ section = "utility"
 priority = "optional"
 assets = [
     [
-        "target/release/mcap-extractor",
+        "target/release/xcap",
         "usr/bin/",
         "755",
     ],
     [
         "README.md",
-        "usr/share/doc/mcap-extractor/README",
+        "usr/share/doc/xcap/README",
         "644",
     ],
 ]
