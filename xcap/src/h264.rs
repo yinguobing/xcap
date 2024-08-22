@@ -1,5 +1,6 @@
 use crate::extractor::Extractor;
 use indicatif::{ProgressBar, ProgressStyle};
+use log::error;
 use mcap::Message;
 use openh264::{decoder::Decoder, formats::YUVSource, nal_units};
 use ros2_sensor_msgs::msg::CompressedImage;
@@ -98,8 +99,14 @@ impl Extractor for Parser {
             }
             // On the first few frames this may fail, so you should check the result
             // a few packets before giving up.
-            let Some(yuv) = self.h264_decoder.decode(packet)? else {
-                continue;
+            let decoded = self.h264_decoder.decode(packet);
+            let yuv = match decoded {
+                Ok(Some(v)) => v,
+                Ok(None) => continue,
+                Err(e) => {
+                    error!("Error decoding frame: {:?}", e);
+                    continue;
+                }
             };
 
             let rgb_buf_size = yuv.estimate_rgb_u8_size();
