@@ -29,3 +29,14 @@ pub struct PointField {
     datatype: u8,
     count: u32,
 }
+
+pub enum Datatype {
+    INT8(i8),
+    UINT8(u8),
+    INT16(i16),
+    UINT16(u16),
+    INT32(i32),
+    UINT32(u32),
+    FLOAT32(f32),
+    FLOAT64(f64),
+}
