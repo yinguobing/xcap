@@ -81,7 +81,7 @@ impl<'a> PointCloud2Iterator<'a> {
     }
 }
 
-impl Iterator for PointCloud2Iterator<'_> {
+impl<'a> Iterator for PointCloud2Iterator<'a> {
     type Item = Vec<Vec<Datatype>>;
 
     fn next(&mut self) -> Option<Self::Item> {

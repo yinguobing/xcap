@@ -30,7 +30,7 @@ pub struct PointField {
     pub count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum Datatype {
     INT8(i8),
     UINT8(u8),
@@ -40,6 +40,21 @@ pub enum Datatype {
     UINT32(u32),
     FLOAT32(f32),
     FLOAT64(f64),
+}
+
+impl From<Datatype> for f32 {
+    fn from(value: Datatype) -> Self {
+        match value {
+            Datatype::INT8(v) => v as f32,
+            Datatype::UINT8(v) => v as f32,
+            Datatype::INT16(v) => v as f32,
+            Datatype::UINT16(v) => v as f32,
+            Datatype::INT32(v) => v as f32,
+            Datatype::UINT32(v) => v as f32,
+            Datatype::FLOAT32(v) => v as f32,
+            Datatype::FLOAT64(v) => v as f32,
+        }
+    }
 }
 
 impl PointField {

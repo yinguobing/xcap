@@ -1,5 +1,6 @@
 use crate::extractor::Extractor;
 use mcap::Message;
+use rerun::{external::glam, RecordingStream};
 use ros2_sensor_msgs::msg::{PointCloud2, PointCloud2Iterator};
 use std::{
     fs,
@@ -18,6 +19,9 @@ pub enum Error {
 
 pub struct Parser {
     output_dir: PathBuf,
+
+    // Visualizer with rerun
+    rec: RecordingStream,
 }
 
 impl Parser {
@@ -25,8 +29,14 @@ impl Parser {
         // Create output dir
         fs::create_dir_all(output_path).unwrap();
 
+        // Visualizer
+        let rec = rerun::RecordingStreamBuilder::new("rerun_example_minimal")
+            .spawn()
+            .unwrap();
+
         Parser {
             output_dir: output_path.into(),
+            rec,
         }
     }
 }
@@ -42,10 +52,20 @@ impl Extractor for Parser {
             cdr::size::Infinite,
         )
         .map_err(|e| Error::CDR(e))?;
+        let points_for_vis = PointCloud2Iterator::new(&points)
+            .into_iter()
+            .map(|p| glam::vec3((p[0][0]).into(), p[1][0].into(), p[2][0].into()));
 
-        for point in PointCloud2Iterator::new(&points) {
-            println!("{:?}", point);
-        }
+        let colors = PointCloud2Iterator::new(&points)
+            .into_iter()
+            .map(|_| rerun::Color::from_rgb(255, 255, 255));
+
+        self.rec.log(
+            "cloud",
+            &rerun::Points3D::new(points_for_vis)
+                .with_colors(colors)
+                .with_radii([1.0]),
+        )?;
 
         // Create output file
         let mut file = fs::File::create(
