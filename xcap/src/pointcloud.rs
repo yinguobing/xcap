@@ -37,11 +37,15 @@ impl Extractor for Parser {
     fn step(&mut self, message: &Message) -> Result<(), Self::ExtractorError> {
         let m: &[u8] = message.data.as_ref();
         let decompressed = zstd::stream::decode_all(m).map_err(|e| Error::Zstd(e))?;
-        let raw = cdr::deserialize_from::<_, PointCloud2, _>(
+        let points = cdr::deserialize_from::<_, PointCloud2, _>(
             decompressed.as_slice(),
             cdr::size::Infinite,
         )
         .map_err(|e| Error::CDR(e))?;
+
+        for idx in 0..points.len() {
+            println!("{:?}", points.decode_by_idx(idx));
+        }
 
         // Create output file
         let mut file = fs::File::create(
@@ -49,7 +53,7 @@ impl Extractor for Parser {
                 .output_dir
                 .join(format!("{}.bin", message.publish_time)),
         )?;
-        file.write_all(&raw.data)?;
+        file.write_all(&points.data)?;
         Ok(())
     }
 
