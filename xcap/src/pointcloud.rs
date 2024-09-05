@@ -30,9 +30,7 @@ impl Parser {
         fs::create_dir_all(output_path).unwrap();
 
         // Visualizer
-        let rec = rerun::RecordingStreamBuilder::new("rerun_example_minimal")
-            .spawn()
-            .unwrap();
+        let rec = rerun::RecordingStreamBuilder::new("XCAP").spawn().unwrap();
 
         Parser {
             output_dir: output_path.into(),
@@ -65,6 +63,19 @@ impl Extractor for Parser {
             &rerun::Points3D::new(points_for_vis)
                 .with_colors(colors)
                 .with_radii([1.0]),
+        )?;
+        self.rec.log(
+            "objects",
+            &rerun::Boxes3D::from_centers_and_half_sizes(
+                [(0.0, 0.0, 0.0)],
+                [(300.0, 200.0, 100.0)],
+            )
+            .with_quaternions([
+                rerun::Quaternion::from_xyzw([0.0, 0.0, 0.382683, 0.923880]), // 45 degrees around Z
+            ])
+            .with_radii([0.05])
+            .with_colors([rerun::Color::from_rgb(0, 255, 0)])
+            .with_fill_mode(rerun::FillMode::DenseWireframe),
         )?;
 
         // Create output file
