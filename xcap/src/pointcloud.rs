@@ -1,6 +1,6 @@
 use crate::extractor::Extractor;
 use mcap::Message;
-use ros2_sensor_msgs::msg::PointCloud2;
+use ros2_sensor_msgs::msg::{PointCloud2, PointCloud2Iterator};
 use std::{
     fs,
     io::Write,
@@ -43,8 +43,8 @@ impl Extractor for Parser {
         )
         .map_err(|e| Error::CDR(e))?;
 
-        for idx in 0..points.len() {
-            println!("{:?}", points.decode_by_idx(idx));
+        for point in PointCloud2Iterator::new(&points) {
+            println!("{:?}", point);
         }
 
         // Create output file

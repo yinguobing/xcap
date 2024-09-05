@@ -41,9 +41,17 @@ pub struct PointCloud2 {
 }
 
 impl PointCloud2 {
+    /// Return number of points in the cloud
     pub fn len(&self) -> usize {
         self.width as usize * self.height as usize
     }
+
+    /// Return names of the values in each field.
+    pub fn field_names(&self) -> Vec<String> {
+        self.fields.iter().map(|f| f.name.clone()).collect()
+    }
+
+    /// Decode point data by index, return filed values.
     pub fn decode_by_idx(&self, idx: usize) -> Option<Vec<Vec<Datatype>>> {
         if idx >= self.len() {
             return None;
@@ -57,5 +65,30 @@ impl PointCloud2 {
             results.push(field.decode_bytes(data));
         }
         Some(results)
+    }
+}
+
+/// Iterator over PointCloud2
+#[derive(Debug)]
+pub struct PointCloud2Iterator<'a> {
+    index: usize,
+    inner: &'a PointCloud2,
+}
+
+impl<'a> PointCloud2Iterator<'a> {
+    pub fn new(inner: &'a PointCloud2) -> Self {
+        PointCloud2Iterator { index: 0, inner }
+    }
+}
+
+impl Iterator for PointCloud2Iterator<'_> {
+    type Item = Vec<Vec<Datatype>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.inner.len() {
+            return None;
+        }
+        self.index += 1;
+        self.inner.decode_by_idx(self.index - 1)
     }
 }

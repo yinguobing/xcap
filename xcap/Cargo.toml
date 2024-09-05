@@ -25,6 +25,7 @@ reqwest = "0.11.27"
 url = "2.5.2"
 rand = "0.8.5"
 ctrlc = "3.4.5"
+rerun = "0.18.0"
 
 # To package a DEB package
 [package.metadata.deb]
