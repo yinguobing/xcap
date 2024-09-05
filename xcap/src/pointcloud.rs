@@ -21,20 +21,17 @@ pub struct Parser {
     output_dir: PathBuf,
 
     // Visualizer with rerun
-    rec: RecordingStream,
+    rec_stream: Option<Arc<RecordingStream>>,
 }
 
 impl Parser {
-    pub fn new(output_path: &Path) -> Self {
+    pub fn new(output_path: &Path, rerun_stream: Option<Arc<RecordingStream>>) -> Self {
         // Create output dir
         fs::create_dir_all(output_path).unwrap();
 
-        // Visualizer
-        let rec = rerun::RecordingStreamBuilder::new("XCAP").spawn().unwrap();
-
         Parser {
             output_dir: output_path.into(),
-            rec,
+            rec_stream: rerun_stream,
         }
     }
 }
@@ -50,33 +47,36 @@ impl Extractor for Parser {
             cdr::size::Infinite,
         )
         .map_err(|e| Error::CDR(e))?;
-        let points_for_vis = PointCloud2Iterator::new(&points)
-            .into_iter()
-            .map(|p| glam::vec3((p[0][0]).into(), p[1][0].into(), p[2][0].into()));
 
-        let colors = PointCloud2Iterator::new(&points)
-            .into_iter()
-            .map(|_| rerun::Color::from_rgb(255, 255, 255));
+        if let Some(rec) = &self.rec_stream {
+            let points_for_vis = PointCloud2Iterator::new(&points)
+                .into_iter()
+                .map(|p| glam::vec3((p[0][0]).into(), p[1][0].into(), p[2][0].into()));
 
-        self.rec.log(
-            "cloud",
-            &rerun::Points3D::new(points_for_vis)
-                .with_colors(colors)
-                .with_radii([1.0]),
-        )?;
-        self.rec.log(
-            "objects",
-            &rerun::Boxes3D::from_centers_and_half_sizes(
-                [(0.0, 0.0, 0.0)],
-                [(300.0, 200.0, 100.0)],
-            )
-            .with_quaternions([
-                rerun::Quaternion::from_xyzw([0.0, 0.0, 0.382683, 0.923880]), // 45 degrees around Z
-            ])
-            .with_radii([0.05])
-            .with_colors([rerun::Color::from_rgb(0, 255, 0)])
-            .with_fill_mode(rerun::FillMode::DenseWireframe),
-        )?;
+            let colors = PointCloud2Iterator::new(&points)
+                .into_iter()
+                .map(|_| rerun::Color::from_rgb(255, 255, 255));
+
+            rec.log(
+                "cloud",
+                &rerun::Points3D::new(points_for_vis)
+                    .with_colors(colors)
+                    .with_radii([1.0]),
+            )?;
+            rec.log(
+                "objects",
+                &rerun::Boxes3D::from_centers_and_half_sizes(
+                    [(0.0, 0.0, 0.0)],
+                    [(300.0, 200.0, 100.0)],
+                )
+                .with_quaternions([
+                    rerun::Quaternion::from_xyzw([0.0, 0.0, 0.382683, 0.923880]), // 45 degrees around Z
+                ])
+                .with_radii([0.05])
+                .with_colors([rerun::Color::from_rgb(0, 255, 0)])
+                .with_fill_mode(rerun::FillMode::DenseWireframe),
+            )?;
+        }
 
         // Create output file
         let mut file = fs::File::create(

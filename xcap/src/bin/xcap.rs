@@ -2,6 +2,7 @@ use clap::Parser;
 use env_logger::Env;
 use log::{error, info, warn};
 use rand::Rng;
+use rerun::RecordingStream;
 use std::sync::atomic::AtomicBool;
 use std::{env, fs, path::PathBuf, sync::Arc};
 use url::Url;
@@ -170,6 +171,13 @@ async fn main() {
     // Parse user args
     let args = Args::parse();
 
+    // Setup visualziation context
+    let rerun_stream = Some(Arc::new(
+        rerun::RecordingStreamBuilder::new("XCAP")
+            .spawn()
+            .expect("Rerun should be spawned"),
+    ));
+
     // Prepare inputs
     let files = match prepare_inputs(&args, &mut download_path, &sigint).await {
         Ok(f) => f,
@@ -237,7 +245,7 @@ async fn main() {
 
     // Process
     info!("Extracting...");
-    let ret = process(&files, &output_dir, &target_topics, sigint);
+    let ret = process(&files, &output_dir, &target_topics, sigint, rerun_stream);
 
     // Cleanup
     cleanup(&download_path);

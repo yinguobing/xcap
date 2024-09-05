@@ -120,6 +120,7 @@ pub fn process(
     output_dir: &Path,
     topic_names: &Vec<String>,
     sigint: Arc<AtomicBool>,
+    vis_stream: Option<Arc<rerun::RecordingStream>>,
 ) -> Result<(), Error> {
     // Get all topics
     let topics = summary(files)?;
@@ -164,7 +165,7 @@ pub fn process(
             "sensor_msgs/msg/PointCloud2" => {
                 parsers.insert(
                     topic.name.as_str(),
-                    Box::new(pointcloud::Parser::new(&output_dir)),
+                    Box::new(pointcloud::Parser::new(&output_dir, vis_stream.clone())),
                 );
             }
             _ => {
