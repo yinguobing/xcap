@@ -1,8 +1,7 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use env_logger::Env;
 use log::{error, info, warn};
 use rand::Rng;
-use rerun::RecordingStream;
 use std::sync::atomic::AtomicBool;
 use std::{env, fs, path::PathBuf, sync::Arc};
 use url::Url;
@@ -12,28 +11,53 @@ struct RuntimeError(String);
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = "Extract ROS messages from MCAP files.")]
-struct Args {
-    /// Input resource. Could be a local directory or a remote S3 URL.
-    #[arg(short, long)]
-    input: String,
+#[command(propagate_version = true)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
 
-    /// Output directory path.
-    #[arg(short, long)]
-    output_dir: Option<PathBuf>,
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Extract ROS messages from MCAP files.
+    Extract {
+        /// Input resource. Could be a local directory or a remote S3 URL.
+        #[arg(short, long)]
+        input: String,
 
-    /// Topics to be extracted, separated by comma. Example: "topic,another/topic,/yet/another/topic"
-    #[arg(long)]
-    topics: Option<String>,
+        /// Output directory path.
+        #[arg(short, long)]
+        output_dir: Option<PathBuf>,
+
+        /// Topics to be extracted, separated by comma. Example: "topic,another/topic,/yet/another/topic"
+        #[arg(long)]
+        topics: Option<String>,
+
+        /// Enable preview. Default: false
+        #[arg(long, default_value_t = false)]
+        preview: bool,
+    },
+
+    /// Visualize ROS messages from MCAP files.
+    Show {
+        /// Input resource. Could be a local directory or a remote S3 URL.
+        #[arg(short, long)]
+        input: String,
+
+        /// Topics to be extracted, separated by comma. Example: "topic,another/topic,/yet/another/topic"
+        #[arg(long)]
+        topics: Option<String>,
+    },
 }
 
 /// Prepare inputs. Download from remote server if necessary.
 async fn prepare_inputs(
-    args: &Args,
+    source: &str,
     download_path: &mut Option<PathBuf>,
     sigint: &Arc<AtomicBool>,
 ) -> Result<Vec<PathBuf>, RuntimeError> {
     // Safety first
-    let mut input_src = args.input.clone();
+    let mut input_src = source.to_owned();
     if input_src.is_empty() {
         return Err(RuntimeError("Input source is empty.".to_string()));
     }
@@ -115,7 +139,7 @@ async fn prepare_inputs(
             )))?
             .to_string();
     } else {
-        input_src.clone_from(&args.input);
+        input_src = source.to_owned();
     }
 
     let input_dir = PathBuf::from(input_src);
@@ -150,6 +174,21 @@ fn cleanup(local_path: &Option<PathBuf>) {
     }
 }
 
+fn make_rerun_stream() -> (
+    rerun::RecordingStream,
+    Option<rerun::sink::MemorySinkStorage>,
+) {
+    let builder = rerun::RecordingStreamBuilder::new("XCAP");
+    let (stream, storage) = if cfg!(feature = "native_viewer") {
+        let (strm, stor) = builder.memory().expect("Rerun should be initialized.");
+        (strm, Some(stor))
+    } else {
+        let strm = builder.spawn().expect("Rerun should be spawned");
+        (strm, None)
+    };
+    return (stream, storage);
+}
+
 #[tokio::main]
 async fn main() {
     // Initialization
@@ -169,17 +208,19 @@ async fn main() {
     .expect("Error setting Ctrl-C handler");
 
     // Parse user args
-    let args = Args::parse();
-
-    // Setup visualziation context
-    let rerun_stream = Some(Arc::new(
-        rerun::RecordingStreamBuilder::new("XCAP")
-            .spawn()
-            .expect("Rerun should be spawned"),
-    ));
+    let cli = Cli::parse();
+    let (input, output_dir, topics, visualize, dump_data) = match &cli.command {
+        Commands::Extract {
+            input,
+            output_dir,
+            topics,
+            preview,
+        } => (input, output_dir, topics, preview, true),
+        Commands::Show { input, topics } => (input, &None, topics, &true, false),
+    };
 
     // Prepare inputs
-    let files = match prepare_inputs(&args, &mut download_path, &sigint).await {
+    let files = match prepare_inputs(&input, &mut download_path, &sigint).await {
         Ok(f) => f,
         Err(e) => {
             error!("{}", e.0);
@@ -202,7 +243,7 @@ async fn main() {
     }
 
     // Summary this job, this will log useful info such as topics for user.
-    let topics = match summary(&files) {
+    let topics_in_mcap = match summary(&files) {
         Ok(t) => t,
         Err(e) => {
             error!("{}", e);
@@ -210,13 +251,13 @@ async fn main() {
             return;
         }
     };
-    info!("Found topics: {}", topics.len());
-    for topic in topics.iter() {
+    info!("Found topics: {}", topics_in_mcap.len());
+    for topic in topics_in_mcap.iter() {
         info!("- {}", topic);
     }
 
     // Check target topics to make sure they make sense for extraction
-    let Some(topic_str) = args.topics else {
+    let Some(topic_str) = topics else {
         error!("No topic specified. Use `--topics` to set topics.");
         cleanup(&download_path);
         return;
@@ -232,7 +273,7 @@ async fn main() {
         return;
     }
     for topic_name in target_topics.iter() {
-        let Some(_) = topics.iter().find(|t| t.name == *topic_name) else {
+        let Some(_) = topics_in_mcap.iter().find(|t| t.name == *topic_name) else {
             error!("Topic not found: {}", topic_name);
             cleanup(&download_path);
             return;
@@ -240,15 +281,37 @@ async fn main() {
     }
 
     // Output directory
-    let output_dir = args.output_dir.unwrap_or(std::env::current_dir().unwrap());
+    let output_dir = output_dir
+        .clone()
+        .unwrap_or(std::env::current_dir().unwrap());
     info!("Output directory: {}", output_dir.display());
+
+    // Visualize required?
+    let (rerun_stream, storage) = if *visualize {
+        let (stm, sto) = make_rerun_stream();
+        (Some(stm), sto)
+    } else {
+        (None, None)
+    };
 
     // Process
     info!("Extracting...");
-    let ret = process(&files, &output_dir, &target_topics, sigint, rerun_stream);
+    let ret = process(
+        &files,
+        &output_dir,
+        &target_topics,
+        sigint,
+        rerun_stream,
+        dump_data,
+    );
 
     // Cleanup
     cleanup(&download_path);
+
+    // Will block program execution!
+    if cfg!(feature = "native_viewer") {
+        let _ = rerun::native_viewer::show(storage.expect("Rerun storage should be ready.").take());
+    }
 
     // Take aways
     match ret {
