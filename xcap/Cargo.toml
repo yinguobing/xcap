@@ -1,7 +1,7 @@
 [package]
 name = "xcap"
 description = "A simple MCAP extractor"
-version = "0.1.5"
+version = "0.3.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -25,7 +25,11 @@ reqwest = "0.11.27"
 url = "2.5.2"
 rand = "0.8.5"
 ctrlc = "3.4.5"
-rerun = "0.18.0"
+rerun = { version = "0.18.2", features = ["native_viewer"] }
+quaternion-core = "0.5.2"
+
+[features]
+native_viewer = []
 
 # To package a DEB package
 [package.metadata.deb]

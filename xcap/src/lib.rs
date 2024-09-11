@@ -120,10 +120,32 @@ pub fn process(
     output_dir: &Path,
     topic_names: &Vec<String>,
     sigint: Arc<AtomicBool>,
-    vis_stream: Option<Arc<rerun::RecordingStream>>,
+    vis_stream: Option<rerun::RecordingStream>,
+    dump_data: bool,
 ) -> Result<(), Error> {
     // Get all topics
     let topics = summary(files)?;
+
+    // Visualization setup, Ego content from disk file
+    let ego = include_bytes!("/home/robin/Downloads/spherical_ship.glb").to_vec();
+    if let Some(rec) = &vis_stream {
+        rec.log_static("/", &rerun::ViewCoordinates::RIGHT_HAND_Z_UP)
+            .unwrap();
+        rec.log_static(
+            "world/ego",
+            &rerun::Asset3D::from_file_contents(ego, Some(rerun::MediaType::glb())),
+        )
+        .unwrap();
+        rec.log_static(
+            "world/ego",
+            &rerun::Transform3D::from_translation_rotation_scale(
+                rerun::Vec3D::from([0.0, 0.0, -86.0]),
+                rerun::Quaternion::from_xyzw([0.5, 0.4999999999999999, 0.5, 0.5000000000000001]),
+                rerun::Scale3D::from(2.0),
+            ),
+        )
+        .unwrap();
+    }
 
     // Setup a progress bar as this could be a time consuming process.
     let bars = MultiProgress::new();
@@ -165,7 +187,11 @@ pub fn process(
             "sensor_msgs/msg/PointCloud2" => {
                 parsers.insert(
                     topic.name.as_str(),
-                    Box::new(pointcloud::Parser::new(&output_dir, vis_stream.clone())),
+                    Box::new(pointcloud::Parser::new(
+                        &output_dir,
+                        vis_stream.clone(),
+                        dump_data,
+                    )),
                 );
             }
             _ => {
