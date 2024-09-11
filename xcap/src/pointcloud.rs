@@ -9,6 +9,8 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
 };
 
+const ZSTD_MAGIC_NUMBER: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("ZSTD error. {0}")]
@@ -18,20 +20,27 @@ pub enum Error {
 }
 
 pub struct Parser {
+    // Output directory
     output_dir: PathBuf,
 
     // Visualizer with rerun
-    rec_stream: Option<Arc<RecordingStream>>,
+    rec_stream: Option<RecordingStream>,
+
+    // Should dump data to disk
+    dump_data: bool,
 }
 
 impl Parser {
-    pub fn new(output_path: &Path, rerun_stream: Option<Arc<RecordingStream>>) -> Self {
+    pub fn new(output_path: &Path, rerun_stream: Option<RecordingStream>, dump_data: bool) -> Self {
         // Create output dir
-        fs::create_dir_all(output_path).unwrap();
+        if dump_data {
+            fs::create_dir_all(output_path).unwrap();
+        }
 
         Parser {
             output_dir: output_path.into(),
             rec_stream: rerun_stream,
+            dump_data,
         }
     }
 }
@@ -40,13 +49,15 @@ impl Extractor for Parser {
     type ExtractorError = Box<dyn std::error::Error>;
 
     fn step(&mut self, message: &Message) -> Result<(), Self::ExtractorError> {
-        let m: &[u8] = message.data.as_ref();
-        let decompressed = zstd::stream::decode_all(m).map_err(|e| Error::Zstd(e))?;
-        let points = cdr::deserialize_from::<_, PointCloud2, _>(
-            decompressed.as_slice(),
-            cdr::size::Infinite,
-        )
-        .map_err(|e| Error::CDR(e))?;
+        let buf = message.data.as_ref();
+        let serialized = if &message.data[..4] == ZSTD_MAGIC_NUMBER {
+            zstd::stream::decode_all(buf).map_err(|e| Error::Zstd(e))?
+        } else {
+            message.data.to_vec()
+        };
+        let points =
+            cdr::deserialize_from::<_, PointCloud2, _>(serialized.as_slice(), cdr::size::Infinite)
+                .map_err(|e| Error::CDR(e))?;
 
         if let Some(rec) = &self.rec_stream {
             let points_for_vis = PointCloud2Iterator::new(&points)
@@ -63,28 +74,17 @@ impl Extractor for Parser {
                     .with_colors(colors)
                     .with_radii([1.0]),
             )?;
-            rec.log(
-                "objects",
-                &rerun::Boxes3D::from_centers_and_half_sizes(
-                    [(0.0, 0.0, 0.0)],
-                    [(300.0, 200.0, 100.0)],
-                )
-                .with_quaternions([
-                    rerun::Quaternion::from_xyzw([0.0, 0.0, 0.382683, 0.923880]), // 45 degrees around Z
-                ])
-                .with_radii([0.05])
-                .with_colors([rerun::Color::from_rgb(0, 255, 0)])
-                .with_fill_mode(rerun::FillMode::DenseWireframe),
-            )?;
         }
 
         // Create output file
-        let mut file = fs::File::create(
-            &self
-                .output_dir
-                .join(format!("{}.bin", message.publish_time)),
-        )?;
-        file.write_all(&points.data)?;
+        if self.dump_data {
+            let mut file = fs::File::create(
+                &self
+                    .output_dir
+                    .join(format!("{}.bin", message.publish_time)),
+            )?;
+            file.write_all(&points.data)?;
+        }
         Ok(())
     }
 
