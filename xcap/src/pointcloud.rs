@@ -67,7 +67,11 @@ impl Extractor for Parser {
             let colors = PointCloud2Iterator::new(&points)
                 .into_iter()
                 .map(|_| rerun::Color::from_rgb(255, 255, 255));
-
+            rec.set_time_seconds(
+                message.channel.topic.clone(),
+                points.header.stamp.sec as f64,
+            );
+            rec.set_time_nanos(message.channel.topic.clone(), points.header.stamp.nanosec);
             rec.log(
                 "cloud",
                 &rerun::Points3D::new(points_for_vis)
