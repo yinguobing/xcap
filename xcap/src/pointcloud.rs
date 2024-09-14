@@ -28,10 +28,19 @@ pub struct Parser {
 
     // Should dump data to disk
     dump_data: bool,
+
+    // Scale the points? This could be usefull if users want to visualize the pointcloud in a
+    // different scale.
+    scale: f32,
 }
 
 impl Parser {
-    pub fn new(output_path: &Path, rerun_stream: Option<RecordingStream>, dump_data: bool) -> Self {
+    pub fn new(
+        output_path: &Path,
+        rerun_stream: Option<RecordingStream>,
+        dump_data: bool,
+        scale: Option<f32>,
+    ) -> Self {
         // Create output dir
         if dump_data {
             fs::create_dir_all(output_path).unwrap();
@@ -41,6 +50,7 @@ impl Parser {
             output_dir: output_path.into(),
             rec_stream: rerun_stream,
             dump_data,
+            scale: scale.unwrap_or(1.0),
         }
     }
 }
@@ -60,9 +70,10 @@ impl Extractor for Parser {
                 .map_err(|e| Error::CDR(e))?;
 
         if let Some(rec) = &self.rec_stream {
-            let points_for_vis = PointCloud2Iterator::new(&points)
-                .into_iter()
-                .map(|p| glam::vec3((p[0][0]).into(), p[1][0].into(), p[2][0].into()));
+            let points_for_vis = PointCloud2Iterator::new(&points).into_iter().map(|p| {
+                let v = glam::vec3((p[0][0]).into(), p[1][0].into(), p[2][0].into());
+                v * self.scale
+            });
 
             let colors = PointCloud2Iterator::new(&points)
                 .into_iter()
@@ -75,7 +86,7 @@ impl Extractor for Parser {
                 format!("cloud/{}", message.channel.topic.clone()),
                 &rerun::Points3D::new(points_for_vis)
                     .with_colors(colors)
-                    .with_radii([1.0]),
+                    .with_radii([0.01]),
             )?;
         }
 

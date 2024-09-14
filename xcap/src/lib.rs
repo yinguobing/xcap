@@ -122,12 +122,13 @@ pub fn process(
     sigint: Arc<AtomicBool>,
     vis_stream: Option<rerun::RecordingStream>,
     dump_data: bool,
+    point_cloud_scale: Option<f32>,
 ) -> Result<(), Error> {
     // Get all topics
     let topics = summary(files)?;
 
     // Visualization setup, Ego content from disk file
-    let ego = include_bytes!("/home/robin/Downloads/spherical_ship.glb").to_vec();
+    let ego = include_bytes!("/home/robin/Documents/3d-models/ego.glb").to_vec();
     if let Some(rec) = &vis_stream {
         rec.log_static("/", &rerun::ViewCoordinates::RIGHT_HAND_Z_UP)
             .unwrap();
@@ -139,9 +140,9 @@ pub fn process(
         rec.log_static(
             "ego",
             &rerun::Transform3D::from_translation_rotation_scale(
-                rerun::Vec3D::from([0.0, 0.0, -86.0]),
+                rerun::Vec3D::from([-0.35, 0.0, -0.8]),
                 rerun::Quaternion::from_xyzw([0.5, 0.4999999999999999, 0.5, 0.5000000000000001]),
-                rerun::Scale3D::from(2.0),
+                rerun::Scale3D::from(0.3),
             ),
         )
         .unwrap();
@@ -189,6 +190,7 @@ pub fn process(
                         &output_dir,
                         vis_stream.clone(),
                         dump_data,
+                        point_cloud_scale,
                     )),
                 );
             }

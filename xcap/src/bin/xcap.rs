@@ -33,6 +33,10 @@ enum Commands {
         #[arg(long)]
         topics: Option<String>,
 
+        /// Scale the point cloud by this factor in preview. Default: 1.0
+        #[arg(long)]
+        point_cloud_scale: Option<f32>,
+
         /// Enable preview. Default: false
         #[arg(long, default_value_t = false)]
         preview: bool,
@@ -44,9 +48,13 @@ enum Commands {
         #[arg(short, long)]
         input: String,
 
-        /// Topics to be extracted, separated by comma. Example: "topic,another/topic,/yet/another/topic"
+        /// Topics to be visualized, separated by comma. Example: "topic,another/topic,/yet/another/topic"
         #[arg(long)]
         topics: Option<String>,
+
+        /// Scale the point cloud by this factor. Default: 1.0
+        #[arg(long)]
+        point_cloud_scale: Option<f32>,
     },
 }
 
@@ -209,14 +217,19 @@ async fn main() {
 
     // Parse user args
     let cli = Cli::parse();
-    let (input, output_dir, topics, visualize, dump_data) = match &cli.command {
+    let (input, output_dir, topics, visualize, dump_data, point_cloud_scale) = match &cli.command {
         Commands::Extract {
             input,
             output_dir,
             topics,
             preview,
-        } => (input, output_dir, topics, preview, true),
-        Commands::Show { input, topics } => (input, &None, topics, &true, false),
+            point_cloud_scale,
+        } => (input, output_dir, topics, preview, true, *point_cloud_scale),
+        Commands::Show {
+            input,
+            topics,
+            point_cloud_scale,
+        } => (input, &None, topics, &true, false, *point_cloud_scale),
     };
 
     // Prepare inputs
@@ -303,6 +316,7 @@ async fn main() {
         sigint,
         rerun_stream,
         dump_data,
+        point_cloud_scale,
     );
 
     // Cleanup
