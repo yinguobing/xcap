@@ -69,11 +69,10 @@ impl Extractor for Parser {
                 .map(|_| rerun::Color::from_rgb(255, 255, 255));
             rec.set_time_seconds(
                 message.channel.topic.clone(),
-                points.header.stamp.sec as f64,
+                points.header.stamp.sec as f64 + points.header.stamp.nanosec as f64 * 1e-9,
             );
-            rec.set_time_nanos(message.channel.topic.clone(), points.header.stamp.nanosec);
             rec.log(
-                "cloud",
+                format!("cloud/{}", message.channel.topic.clone()),
                 &rerun::Points3D::new(points_for_vis)
                     .with_colors(colors)
                     .with_radii([1.0]),

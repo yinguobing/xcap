@@ -132,12 +132,12 @@ pub fn process(
         rec.log_static("/", &rerun::ViewCoordinates::RIGHT_HAND_Z_UP)
             .unwrap();
         rec.log_static(
-            "world/ego",
+            "ego",
             &rerun::Asset3D::from_file_contents(ego, Some(rerun::MediaType::glb())),
         )
         .unwrap();
         rec.log_static(
-            "world/ego",
+            "ego",
             &rerun::Transform3D::from_translation_rotation_scale(
                 rerun::Vec3D::from([0.0, 0.0, -86.0]),
                 rerun::Quaternion::from_xyzw([0.5, 0.4999999999999999, 0.5, 0.5000000000000001]),
@@ -155,7 +155,6 @@ pub fn process(
     .unwrap()
     .progress_chars("##-");
     let mut bar_handles: HashMap<&str, ProgressBar> = HashMap::new();
-    let mut bar_progress: HashMap<&str, u32> = HashMap::new();
 
     // Create a parser group for all different topics.
     let mut parsers: HashMap<
@@ -174,7 +173,6 @@ pub fn process(
 
         // Using topic name as output directory path
         let output_dir = output_dir.join(PathBuf::from(topic_name.trim_start_matches('/')));
-        fs::create_dir_all(&output_dir)?;
 
         // Create parser by topic format
         match topic.format.as_str() {
@@ -210,7 +208,6 @@ pub fn process(
         for h in bar_handles.values_mut() {
             h.set_style(sty.clone());
         }
-        bar_progress.insert(topic_name, 0);
     }
 
     // Enumerate all files
@@ -230,17 +227,9 @@ pub fn process(
             let Some(parser) = parsers.get_mut(topic_name) else {
                 continue;
             };
-
             parser
                 .step(&msg)
                 .map_err(|e| Error::ParserError(e.to_string()))?;
-
-            bar_progress
-                .get_mut(topic_name)
-                .unwrap()
-                .checked_add(1)
-                .unwrap();
-
             let bar = bar_handles.get(topic_name).unwrap();
             bar.set_message(topic_name.to_string());
             bar.inc(1);
