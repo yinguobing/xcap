@@ -79,7 +79,7 @@ impl Extractor for Parser {
                 .into_iter()
                 .map(|_| rerun::Color::from_rgb(255, 255, 255));
             rec.set_time_seconds(
-                message.channel.topic.clone(),
+                "main",
                 points.header.stamp.sec as f64 + points.header.stamp.nanosec as f64 * 1e-9,
             );
             rec.log(
