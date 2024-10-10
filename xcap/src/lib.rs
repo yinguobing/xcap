@@ -9,8 +9,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod compressed_image;
 mod extractor;
-mod h264;
 mod pointcloud;
 pub mod storage;
 
@@ -29,7 +29,7 @@ pub enum Error {
     #[error("Interrupted")]
     Interrupted,
     #[error("H.264 error. {0}")]
-    H264Error(#[from] h264::Error),
+    H264Error(#[from] compressed_image::Error),
     #[error("Failed to parse message. {0}")]
     ParserError(String),
     #[error("unknown error")]
@@ -179,7 +179,11 @@ pub fn process(
             "sensor_msgs/msg/CompressedImage" => {
                 parsers.insert(
                     topic.name.as_str(),
-                    Box::new(h264::Parser::new(&output_dir)),
+                    Box::new(compressed_image::Parser::new(
+                        &output_dir,
+                        vis_stream.clone(),
+                        dump_data,
+                    )),
                 );
             }
             "sensor_msgs/msg/PointCloud2" => {

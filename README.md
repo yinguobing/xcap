@@ -40,7 +40,7 @@ pip install rerun-sdk
 
 Visualize the data, do not dump any to disk.
 ```bash
-xcap visualize -i /path/to/mcap/dir --topics="/lidar"
+xcap show -i /path/to/mcap/dir --topics="/lidar"
 ```
 
 ## Build
