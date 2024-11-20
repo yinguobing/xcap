@@ -33,9 +33,13 @@ enum Commands {
         #[arg(long)]
         topics: Option<String>,
 
-        /// Scale the point cloud by this factor in preview. Default: 1.0
+        /// Scale the point cloud in spatial by this factor in preview. Default: 1.0
         #[arg(long)]
         point_cloud_scale: Option<f32>,
+
+        /// Scale the point cloud intensity by this factor in preview. Default: 1.0
+        #[arg(long)]
+        intensity_scale: Option<f32>,
 
         /// Enable preview. Default: false
         #[arg(long, default_value_t = false)]
@@ -55,6 +59,10 @@ enum Commands {
         /// Scale the point cloud by this factor. Default: 1.0
         #[arg(long)]
         point_cloud_scale: Option<f32>,
+
+        /// Scale the point cloud intensity by this factor in preview. Default: 1.0
+        #[arg(long)]
+        intensity_scale: Option<f32>,
     },
 }
 
@@ -217,20 +225,39 @@ async fn main() {
 
     // Parse user args
     let cli = Cli::parse();
-    let (input, output_dir, topics, visualize, dump_data, point_cloud_scale) = match &cli.command {
-        Commands::Extract {
-            input,
-            output_dir,
-            topics,
-            preview,
-            point_cloud_scale,
-        } => (input, output_dir, topics, preview, true, *point_cloud_scale),
-        Commands::Show {
-            input,
-            topics,
-            point_cloud_scale,
-        } => (input, &None, topics, &true, false, *point_cloud_scale),
-    };
+    let (input, output_dir, topics, visualize, dump_data, point_cloud_scale, intensity_scale) =
+        match &cli.command {
+            Commands::Extract {
+                input,
+                output_dir,
+                topics,
+                preview,
+                point_cloud_scale,
+                intensity_scale,
+            } => (
+                input,
+                output_dir,
+                topics,
+                preview,
+                true,
+                *point_cloud_scale,
+                *intensity_scale,
+            ),
+            Commands::Show {
+                input,
+                topics,
+                point_cloud_scale,
+                intensity_scale,
+            } => (
+                input,
+                &None,
+                topics,
+                &true,
+                false,
+                *point_cloud_scale,
+                *intensity_scale,
+            ),
+        };
 
     // Prepare inputs
     let files = match prepare_inputs(&input, &mut download_path, &sigint).await {
@@ -317,6 +344,7 @@ async fn main() {
         rerun_stream,
         dump_data,
         point_cloud_scale,
+        intensity_scale,
     );
 
     // Cleanup

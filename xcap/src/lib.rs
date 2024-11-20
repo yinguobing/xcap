@@ -123,6 +123,7 @@ pub fn process(
     vis_stream: Option<rerun::RecordingStream>,
     dump_data: bool,
     point_cloud_scale: Option<f32>,
+    intensity_scale: Option<f32>,
 ) -> Result<(), Error> {
     // Get all topics
     let topics = summary(files)?;
@@ -194,6 +195,7 @@ pub fn process(
                         vis_stream.clone(),
                         dump_data,
                         point_cloud_scale,
+                        intensity_scale,
                     )),
                 );
             }

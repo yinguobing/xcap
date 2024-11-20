@@ -1,4 +1,5 @@
 use crate::extractor::Extractor;
+use colorgrad::Gradient;
 use mcap::Message;
 use rerun::{external::glam, RecordingStream};
 use ros2_sensor_msgs::msg::{PointCloud2, PointCloud2Iterator};
@@ -29,9 +30,15 @@ pub struct Parser {
     // Should dump data to disk
     dump_data: bool,
 
-    // Scale the points? This could be usefull if users want to visualize the pointcloud in a
-    // different scale.
-    scale: f32,
+    // Scale the points in spatial domain? This could be usefull if users want to visualize the pointcloud in a
+    // different spatial scale.
+    spatial_scale: f32,
+
+    // Intensity scale. This is used to scale the intensity values to a range [0, 1].
+    intensity_scale: f32,
+
+    // Color map. Map point cloud intensity to a color.
+    color_map: colorgrad::LinearGradient,
 }
 
 impl Parser {
@@ -39,7 +46,8 @@ impl Parser {
         output_path: &Path,
         rerun_stream: Option<RecordingStream>,
         dump_data: bool,
-        scale: Option<f32>,
+        spatial_scale: Option<f32>,
+        intensity_scale: Option<f32>,
     ) -> Self {
         // Create output dir
         if dump_data {
@@ -50,7 +58,14 @@ impl Parser {
             output_dir: output_path.into(),
             rec_stream: rerun_stream,
             dump_data,
-            scale: scale.unwrap_or(1.0),
+            spatial_scale: spatial_scale.unwrap_or(1.0),
+            intensity_scale: intensity_scale.unwrap_or(1.0),
+            color_map: colorgrad::GradientBuilder::new()
+                .html_colors(&["#00F", "#FFF", "gold"])
+                .domain(&[0.0, 0.3, 0.6])
+                .mode(colorgrad::BlendMode::LinearRgb)
+                .build::<colorgrad::LinearGradient>()
+                .expect("Color map should be created"),
         }
     }
 }
@@ -72,12 +87,16 @@ impl Extractor for Parser {
         if let Some(rec) = &self.rec_stream {
             let points_for_vis = PointCloud2Iterator::new(&points).into_iter().map(|p| {
                 let v = glam::vec3((p[0][0]).into(), p[1][0].into(), p[2][0].into());
-                v * self.scale
+                v * self.spatial_scale
+            });
+            let intensity = PointCloud2Iterator::new(&points).into_iter().map(|p| {
+                f32::from(p.last().unwrap().last().unwrap().clone()) * self.intensity_scale
+            });
+            let colors = intensity.map(|i| {
+                let [r, g, b, a] = self.color_map.at(i).to_rgba8();
+                rerun::Color::from_unmultiplied_rgba(r, g, b, a)
             });
 
-            let colors = PointCloud2Iterator::new(&points)
-                .into_iter()
-                .map(|_| rerun::Color::from_rgb(255, 255, 255));
             rec.set_time_seconds(
                 "main",
                 points.header.stamp.sec as f64 + points.header.stamp.nanosec as f64 * 1e-9,
