@@ -11,6 +11,7 @@ use std::{
 
 mod compressed_image;
 mod extractor;
+mod image;
 mod pointcloud;
 pub mod storage;
 
@@ -126,6 +127,7 @@ pub fn process(
     intensity_scale: Option<f32>,
 ) -> Result<(), Error> {
     // Get all topics
+    info!("Reading summary information...");
     let topics = summary(files)?;
 
     // Visualization setup, Ego content from disk file
@@ -177,6 +179,16 @@ pub fn process(
 
         // Create parser by topic format
         match topic.format.as_str() {
+            "sensor_msgs/msg/Image" => {
+                parsers.insert(
+                    topic.name.as_str(),
+                    Box::new(image::Parser::new(
+                        &output_dir,
+                        vis_stream.clone(),
+                        dump_data,
+                    )),
+                );
+            }
             "sensor_msgs/msg/CompressedImage" => {
                 parsers.insert(
                     topic.name.as_str(),
