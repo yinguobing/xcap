@@ -49,7 +49,7 @@ assets = [
         "755",
     ],
     [
-        "README.md",
+        "../README.md",
         "usr/share/doc/xcap/README",
         "644",
     ],
