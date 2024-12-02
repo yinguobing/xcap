@@ -1,6 +1,6 @@
 use extractor::Extractor;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use log::{error, info};
+use log::{error, info, warn};
 use std::sync::{atomic::AtomicBool, Arc};
 use std::{
     collections::HashMap,
@@ -73,8 +73,13 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
         let mut fd = fs::File::open(file)?;
         let mut buf = Vec::new();
         fd.read_to_end(&mut buf)?;
-        let summary =
-            mcap::read::Summary::read(&buf)?.ok_or(Error::NoSummary(file.display().to_string()))?;
+        let summary = match mcap::read::Summary::read(&buf) {
+            Ok(summary) => summary.unwrap(),
+            Err(e) => {
+                warn!("Failed to read summary from {}: {}", file.display(), e);
+                continue;
+            }
+        };
 
         // Statistics
         let stats = summary
@@ -125,11 +130,8 @@ pub fn process(
     dump_data: bool,
     point_cloud_scale: Option<f32>,
     intensity_scale: Option<f32>,
+    topics: Vec<Topic>,
 ) -> Result<(), Error> {
-    // Get all topics
-    info!("Reading summary information...");
-    let topics = summary(files)?;
-
     // Visualization setup, Ego content from disk file
     let ego = include_bytes!("/home/robin/Documents/3d-models/ego.glb").to_vec();
     if let Some(rec) = &vis_stream {

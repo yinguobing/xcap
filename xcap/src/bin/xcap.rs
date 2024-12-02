@@ -345,6 +345,7 @@ async fn main() {
         dump_data,
         point_cloud_scale,
         intensity_scale,
+        topics_in_mcap,
     );
 
     // Cleanup
