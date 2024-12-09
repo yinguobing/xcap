@@ -131,6 +131,8 @@ pub fn process(
     point_cloud_scale: Option<f32>,
     intensity_scale: Option<f32>,
     topics: Vec<Topic>,
+    trim_start: i64,
+    trim_end: i64,
 ) -> Result<(), Error> {
     // Visualization setup, Ego content from disk file
     let ego = include_bytes!("/home/robin/Documents/3d-models/ego.glb").to_vec();
@@ -240,10 +242,23 @@ pub fn process(
 
         // Enumerate all messages
         for message in mcap::MessageStream::new(&buf)? {
+            // Check for interrupt
             if sigint.load(std::sync::atomic::Ordering::Relaxed) {
                 return Err(Error::Interrupted);
             }
+
             let msg = message?;
+
+            // Trim start/end
+            if msg.publish_time < trim_start as u64 {
+                continue;
+            }
+            if msg.publish_time > trim_end as u64 {
+                info!("Trimming end reached.");
+                break;
+            }
+
+            // Parse message
             let topic_name = msg.channel.topic.as_str();
             let Some(parser) = parsers.get_mut(topic_name) else {
                 continue;

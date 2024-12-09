@@ -44,6 +44,14 @@ enum Commands {
         /// Enable preview. Default: false
         #[arg(long, default_value_t = false)]
         preview: bool,
+
+        /// Set the start time offset `HH:MM:SS` in UTC. Default: 00:00:00.
+        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
+        time_off: String,
+
+        /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+        #[arg(long)]
+        time_stop: Option<String>,
     },
 
     /// Visualize ROS messages from MCAP files.
@@ -63,6 +71,14 @@ enum Commands {
         /// Scale the point cloud intensity by this factor in preview. Default: 1.0
         #[arg(long)]
         intensity_scale: Option<f32>,
+
+        /// Set the start time offset `YEAR-MONTH-DAY-HH:MM:SS` in UTC.
+        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
+        time_off: String,
+
+        /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+        #[arg(long)]
+        time_stop: Option<String>,
     },
 }
 
@@ -225,39 +241,56 @@ async fn main() {
 
     // Parse user args
     let cli = Cli::parse();
-    let (input, output_dir, topics, visualize, dump_data, point_cloud_scale, intensity_scale) =
-        match &cli.command {
-            Commands::Extract {
-                input,
-                output_dir,
-                topics,
-                preview,
-                point_cloud_scale,
-                intensity_scale,
-            } => (
-                input,
-                output_dir,
-                topics,
-                preview,
-                true,
-                *point_cloud_scale,
-                *intensity_scale,
-            ),
-            Commands::Show {
-                input,
-                topics,
-                point_cloud_scale,
-                intensity_scale,
-            } => (
-                input,
-                &None,
-                topics,
-                &true,
-                false,
-                *point_cloud_scale,
-                *intensity_scale,
-            ),
-        };
+    let (
+        input,
+        output_dir,
+        topics,
+        visualize,
+        dump_data,
+        point_cloud_scale,
+        intensity_scale,
+        time_off,
+        time_stop,
+    ) = match &cli.command {
+        Commands::Extract {
+            input,
+            output_dir,
+            topics,
+            preview,
+            point_cloud_scale,
+            intensity_scale,
+            time_off,
+            time_stop,
+        } => (
+            input,
+            output_dir,
+            topics,
+            preview,
+            true,
+            *point_cloud_scale,
+            *intensity_scale,
+            time_off,
+            time_stop,
+        ),
+        Commands::Show {
+            input,
+            topics,
+            point_cloud_scale,
+            intensity_scale,
+            time_off,
+            time_stop,
+        } => (
+            input,
+            &None,
+            topics,
+            &true,
+            false,
+            *point_cloud_scale,
+            *intensity_scale,
+            time_off,
+            time_stop,
+        ),
+    };
 
     // Prepare inputs
     let files = match prepare_inputs(&input, &mut download_path, &sigint).await {
@@ -324,7 +357,9 @@ async fn main() {
     let output_dir = output_dir
         .clone()
         .unwrap_or(std::env::current_dir().unwrap());
-    info!("Output directory: {}", output_dir.display());
+    if dump_data {
+        info!("Output directory: {}", output_dir.display());
+    }
 
     // Visualize required?
     let (rerun_stream, storage) = if *visualize {
@@ -332,6 +367,31 @@ async fn main() {
         (Some(stm), sto)
     } else {
         (None, None)
+    };
+
+    // Start time and stop time
+    let start_time = match chrono::NaiveDateTime::parse_from_str(&time_off, "%Y-%m-%d %H:%M:%S") {
+        Ok(t) => t.and_utc().timestamp_nanos_opt().unwrap(),
+        Err(e) => {
+            error!("Parse start time failed, {}", e);
+            cleanup(&download_path);
+            return;
+        }
+    };
+    let stop_time = if time_stop.is_none() {
+        i64::MAX
+    } else {
+        match chrono::NaiveDateTime::parse_from_str(
+            time_stop.as_ref().unwrap(),
+            "%Y-%m-%d %H:%M:%S",
+        ) {
+            Ok(t) => t.and_utc().timestamp_nanos_opt().unwrap(),
+            Err(e) => {
+                error!("Parse stop time failed, {}", e);
+                cleanup(&download_path);
+                return;
+            }
+        }
     };
 
     // Process
@@ -346,6 +406,8 @@ async fn main() {
         point_cloud_scale,
         intensity_scale,
         topics_in_mcap,
+        start_time,
+        stop_time,
     );
 
     // Cleanup
