@@ -72,11 +72,26 @@ enum Commands {
         #[arg(long)]
         intensity_scale: Option<f32>,
 
-        /// Set the start time offset `YEAR-MONTH-DAY-HH:MM:SS` in UTC.
+        /// Set the start time offset `YEAR-MONTH-DAY HH:MM:SS` in UTC.
         #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
         time_off: String,
 
-        /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+        /// Set the stop time `YEAR-MONTH-DAY HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+        #[arg(long)]
+        time_stop: Option<String>,
+    },
+
+    /// Trim MCAP files.
+    Trim {
+        /// Input resource. Could be a local directory or a remote S3 URL.
+        #[arg(short, long)]
+        input: String,
+
+        /// Set the start time offset `YEAR-MONTH-DAY HH:MM:SS` in UTC.
+        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
+        time_off: String,
+
+        /// Set the stop time `YEAR-MONTH-DAY HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
         #[arg(long)]
         time_stop: Option<String>,
     },
@@ -290,6 +305,13 @@ async fn main() {
             time_off,
             time_stop,
         ),
+        Commands::Trim {
+            input,
+            time_off,
+            time_stop,
+        } => (
+            input, &None, &None, &true, false, None, None, time_off, time_stop,
+        ),
     };
 
     // Prepare inputs
@@ -327,30 +349,6 @@ async fn main() {
     info!("Found topics: {}", topics_in_mcap.len());
     for topic in topics_in_mcap.iter() {
         info!("- {}", topic);
-    }
-
-    // Check target topics to make sure they make sense for extraction
-    let Some(topic_str) = topics else {
-        error!("No topic specified. Use `--topics` to set topics.");
-        cleanup(&download_path);
-        return;
-    };
-    let target_topics = topic_str
-        .trim()
-        .split(',')
-        .map(|t| t.to_string())
-        .collect::<Vec<_>>();
-    if target_topics.is_empty() {
-        error!("No topic specified. Use `--topics` to set topics.");
-        cleanup(&download_path);
-        return;
-    }
-    for topic_name in target_topics.iter() {
-        let Some(_) = topics_in_mcap.iter().find(|t| t.name == *topic_name) else {
-            error!("Topic not found: {}", topic_name);
-            cleanup(&download_path);
-            return;
-        };
     }
 
     // Output directory
@@ -394,8 +392,43 @@ async fn main() {
         }
     };
 
+    // Trim only mode?
+    let trim_only = match &cli.command {
+        Commands::Trim { .. } => true,
+        _ => false,
+    };
+
+    // Check target topics to make sure they make sense for extraction and
+    // visualization. Trim does not need this.
+    let mut target_topics: Vec<String> = vec![];
+
+    if !trim_only {
+        let Some(topic_str) = topics else {
+            error!("No topic specified. Use `--topics` to set topics.");
+            cleanup(&download_path);
+            return;
+        };
+        target_topics = topic_str
+            .trim()
+            .split(',')
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>();
+        if target_topics.is_empty() {
+            error!("No topic specified. Use `--topics` to set topics.");
+            cleanup(&download_path);
+            return;
+        }
+        for topic_name in target_topics.iter() {
+            let Some(_) = topics_in_mcap.iter().find(|t| t.name == *topic_name) else {
+                error!("Topic not found: {}", topic_name);
+                cleanup(&download_path);
+                return;
+            };
+        }
+    }
+
     // Process
-    info!("Extracting...");
+    info!("Processing...");
     let ret = process(
         &files,
         &output_dir,
@@ -408,6 +441,7 @@ async fn main() {
         topics_in_mcap,
         start_time,
         stop_time,
+        trim_only,
     );
 
     // Cleanup

@@ -131,6 +131,7 @@ pub fn process(
     topics: Vec<Topic>,
     trim_start: i64,
     trim_end: i64,
+    trim_only: bool,
 ) -> Result<(), Error> {
     // Visualization setup, Ego content from disk file
     let ego = include_bytes!("/home/robin/Documents/3d-models/ego.glb").to_vec();
@@ -231,6 +232,15 @@ pub fn process(
         }
     }
 
+    // Trim only mode?
+    let mut trim_out = if trim_only {
+        Some(mcap::Writer::new(std::io::BufWriter::new(
+            fs::File::create("trim.mcap")?,
+        ))?)
+    } else {
+        None
+    };
+
     // Enumerate all files
     for file in files.iter() {
         // Read in files
@@ -257,15 +267,19 @@ pub fn process(
 
             // Parse message
             let topic_name = msg.channel.topic.as_str();
-            let Some(parser) = parsers.get_mut(topic_name) else {
-                continue;
-            };
-            parser
-                .step(&msg)
-                .map_err(|e| Error::ParserError(e.to_string()))?;
-            let bar = bar_handles.get(topic_name).unwrap();
-            bar.set_message(topic_name.to_string());
-            bar.inc(1);
+            if trim_only {
+                trim_out.as_mut().unwrap().write(&msg)?;
+            } else {
+                let Some(parser) = parsers.get_mut(topic_name) else {
+                    continue;
+                };
+                parser
+                    .step(&msg)
+                    .map_err(|e| Error::ParserError(e.to_string()))?;
+                let bar = bar_handles.get(topic_name).unwrap();
+                bar.set_message(topic_name.to_string());
+                bar.inc(1);
+            }
         }
     }
 
@@ -276,6 +290,9 @@ pub fn process(
         parser
             .post_process(sigint.clone())
             .map_err(|e| Error::ParserError(e.to_string()))?;
+    }
+    if trim_only {
+        trim_out.unwrap().finish()?;
     }
 
     Ok(())

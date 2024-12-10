@@ -8,7 +8,7 @@ Single binary to extract ROS messages from MCAP files.
 - Visualization with Rerun
 
 ## Usage
-Xcap supports MCAP file extracting and visualizing.
+Xcap supports MCAP file extracting, trimming and visualization.
 
 ### Extract
 Extract from a local directory containing multiple MCAP files
@@ -27,6 +27,12 @@ xcap extract -i "http://your_minio:port/bucket_name/path/to/one_of_the_mcap_file
 In case you want to preview the content during extracing, use `--preview` flag:
 ```bash
 xcap extract -i /path/to/mcap/dir -o /path/to/output --topics="/lidar" --preview
+```
+
+### Trim
+Trim the mcap file.
+```bash
+xcap trim -i /path/to/mcap/dir --time-off "2024-12-05 09:50:20" --time-stop "2024-12-05 09:50:25"
 ```
 
 ### Visualize
