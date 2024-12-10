@@ -4,8 +4,7 @@ use log::{error, info, warn};
 use std::sync::{atomic::AtomicBool, Arc};
 use std::{
     collections::HashMap,
-    fs,
-    io::{self, Read},
+    fs, io,
     path::{Path, PathBuf},
 };
 
@@ -70,10 +69,9 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
     // Enumerate all files
     for file in files {
         // Read summary
-        let mut fd = fs::File::open(file)?;
-        let mut buf = Vec::new();
-        fd.read_to_end(&mut buf)?;
-        let summary = match mcap::read::Summary::read(&buf) {
+        let fd = fs::File::open(file)?;
+        let mmap = unsafe { memmap2::Mmap::map(&fd)? };
+        let summary = match mcap::read::Summary::read(&mmap) {
             Ok(summary) => summary.unwrap(),
             Err(e) => {
                 warn!("Failed to read summary from {}: {}", file.display(), e);
@@ -236,12 +234,11 @@ pub fn process(
     // Enumerate all files
     for file in files.iter() {
         // Read in files
-        let mut fd = fs::File::open(file)?;
-        let mut buf = Vec::new();
-        fd.read_to_end(&mut buf)?;
+        let fd = fs::File::open(file)?;
+        let mmap = unsafe { memmap2::Mmap::map(&fd)? };
 
         // Enumerate all messages
-        for message in mcap::MessageStream::new(&buf)? {
+        for message in mcap::MessageStream::new(&mmap)? {
             // Check for interrupt
             if sigint.load(std::sync::atomic::Ordering::Relaxed) {
                 return Err(Error::Interrupted);

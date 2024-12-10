@@ -1,7 +1,7 @@
 [package]
 name = "xcap"
 description = "A simple MCAP extractor"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -29,6 +29,7 @@ rerun = { version = "0.20.3", features = ["native_viewer"] }
 quaternion-core = "0.5.2"
 colorgrad = "0.7.0"
 chrono = "0.4.39"
+memmap2 = "0.9.5"
 
 [features]
 native_viewer = []
