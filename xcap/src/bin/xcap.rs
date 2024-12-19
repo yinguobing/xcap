@@ -449,7 +449,10 @@ async fn main() {
 
     // Will block program execution!
     if cfg!(feature = "native_viewer") {
-        let _ = rerun::native_viewer::show(storage.expect("Rerun storage should be ready.").take());
+        let _ = rerun::native_viewer::show(
+            rerun::MainThreadToken::i_promise_i_am_on_the_main_thread(),
+            storage.expect("Rerun storage should be ready.").take(),
+        );
     }
 
     // Take aways
