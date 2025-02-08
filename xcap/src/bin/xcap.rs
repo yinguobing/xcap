@@ -359,14 +359,6 @@ async fn main() {
         info!("Output directory: {}", output_dir.display());
     }
 
-    // Visualize required?
-    let (rerun_stream, storage) = if *visualize {
-        let (stm, sto) = make_rerun_stream();
-        (Some(stm), sto)
-    } else {
-        (None, None)
-    };
-
     // Start time and stop time
     let start_time = match chrono::NaiveDateTime::parse_from_str(&time_off, "%Y-%m-%d %H:%M:%S") {
         Ok(t) => t.and_utc().timestamp_nanos_opt().unwrap(),
@@ -426,6 +418,14 @@ async fn main() {
             };
         }
     }
+
+    // Visualize required?
+    let (rerun_stream, storage) = if *visualize && !trim_only {
+        let (stm, sto) = make_rerun_stream();
+        (Some(stm), sto)
+    } else {
+        (None, None)
+    };
 
     // Process
     info!("Processing...");
