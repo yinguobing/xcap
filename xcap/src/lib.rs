@@ -136,7 +136,7 @@ pub fn process(
     // Visualization setup, Ego content from disk file
     let ego = include_bytes!("/home/robin/Documents/3d-models/ego.glb").to_vec();
     if let Some(rec) = &vis_stream {
-        rec.log_static("/", &rerun::ViewCoordinates::FLU).unwrap();
+        rec.log_static("/", &rerun::ViewCoordinates::FLU()).unwrap();
         rec.log_static(
             "ego",
             &rerun::Asset3D::from_file_contents(ego, Some(rerun::MediaType::glb())),
