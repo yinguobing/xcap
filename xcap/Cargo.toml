@@ -30,6 +30,9 @@ quaternion-core = "0.5.2"
 colorgrad = "0.7.0"
 chrono = "0.4.39"
 memmap2 = "0.9.5"
+bstr = "1.11.3"
+imageproc = "0.25.0"
+libyuv = "1.0.0"
 
 [features]
 native_viewer = []
