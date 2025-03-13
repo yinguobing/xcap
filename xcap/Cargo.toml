@@ -33,6 +33,7 @@ memmap2 = "0.9.5"
 bstr = "1.11.3"
 imageproc = "0.25.0"
 libyuv = "1.0.0"
+pcd-rs = "0.12.0"
 
 [features]
 native_viewer = []

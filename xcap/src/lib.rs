@@ -138,12 +138,12 @@ pub fn process(
     if let Some(rec) = &vis_stream {
         rec.log_static("/", &rerun::ViewCoordinates::FLU()).unwrap();
         rec.log_static(
-            "ego",
+            "/ego",
             &rerun::Asset3D::from_file_contents(ego, Some(rerun::MediaType::glb())),
         )
         .unwrap();
         rec.log_static(
-            "ego",
+            "/ego",
             &rerun::Transform3D::from_translation_rotation_scale(
                 rerun::Vec3D::from([-0.35, 0.0, -0.8]),
                 rerun::Quaternion::from_xyzw([0.5, 0.5, 0.5, 0.5]),

@@ -1,11 +1,13 @@
 use crate::extractor::Extractor;
 use colorgrad::Gradient;
 use mcap::Message;
-use rerun::{external::glam, RecordingStream};
+use pcd_rs::{DataKind, DynRecord, DynWriter, Field, Schema, ValueKind, WriterInit};
+use rerun::RecordingStream;
 use ros2_sensor_msgs::msg::{PointCloud2, PointCloud2Iterator};
 use std::{
     fs,
     io::Write,
+    iter::zip,
     path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Arc},
 };
@@ -80,30 +82,39 @@ impl Extractor for Parser {
         } else {
             message.data.to_vec()
         };
-        let points =
+        let cloud_msg =
             cdr::deserialize_from::<_, PointCloud2, _>(serialized.as_slice(), cdr::size::Infinite)
                 .map_err(|e| Error::CDR(e))?;
 
+        // Extract points and intensity
+        let points: Vec<rerun::Position3D> = PointCloud2Iterator::new(&cloud_msg)
+            .into_iter()
+            .map(|p| {
+                rerun::Position3D::new(
+                    f32::from(p[0][0]) * self.spatial_scale,
+                    f32::from(p[1][0]) * self.spatial_scale,
+                    f32::from(p[2][0]) * self.spatial_scale,
+                )
+            })
+            .collect();
+        let intensity: Vec<f32> = PointCloud2Iterator::new(&cloud_msg)
+            .into_iter()
+            .map(|p| f32::from(p.last().unwrap().last().unwrap().clone()) * self.intensity_scale)
+            .collect();
+
+        // Visualize?
         if let Some(rec) = &self.rec_stream {
-            let points_for_vis = PointCloud2Iterator::new(&points).into_iter().map(|p| {
-                let v = glam::vec3((p[0][0]).into(), p[1][0].into(), p[2][0].into());
-                v * self.spatial_scale
-            });
-            let intensity = PointCloud2Iterator::new(&points).into_iter().map(|p| {
-                f32::from(p.last().unwrap().last().unwrap().clone()) * self.intensity_scale
-            });
-            let colors = intensity.map(|i| {
-                let [r, g, b, a] = self.color_map.at(i).to_rgba8();
+            let colors = intensity.iter().map(|i| {
+                let [r, g, b, a] = self.color_map.at(*i).to_rgba8();
                 rerun::Color::from_unmultiplied_rgba(r, g, b, a)
             });
-
             rec.set_time_seconds(
                 "main",
-                points.header.stamp.sec as f64 + points.header.stamp.nanosec as f64 * 1e-9,
+                cloud_msg.header.stamp.sec as f64 + cloud_msg.header.stamp.nanosec as f64 * 1e-9,
             );
             rec.log(
-                format!("cloud/{}", message.channel.topic.clone()),
-                &rerun::Points3D::new(points_for_vis)
+                format!("/world/cloud/{}", message.channel.topic.clone()),
+                &rerun::Points3D::new(points.clone())
                     .with_colors(colors)
                     .with_radii([0.01]),
             )?;
@@ -111,13 +122,47 @@ impl Extractor for Parser {
 
         // Create output file
         if self.dump_data {
-            let mut file = fs::File::create(
-                &self
-                    .output_dir
-                    .join(format!("{}.bin", message.publish_time)),
-            )?;
-            file.write_all(&points.data)?;
+            // Output binary file
+            let mut output_file = self
+                .output_dir
+                .join(format!("{}.bin", message.publish_time));
+            let mut file = fs::File::create(&output_file)?;
+            file.write_all(&cloud_msg.data)?;
+
+            // Output PCD file
+            let schema = vec![
+                ("x", ValueKind::F32, 1),
+                ("y", ValueKind::F32, 1),
+                ("z", ValueKind::F32, 1),
+                ("intensity", ValueKind::F32, 1),
+            ];
+
+            // Build a writer
+            output_file.set_extension("pcd");
+            let mut writer: DynWriter<_> = WriterInit {
+                width: cloud_msg.width as u64,
+                height: cloud_msg.height as u64,
+                viewpoint: Default::default(),
+                data_kind: DataKind::Ascii,
+                schema: Some(Schema::from_iter(schema)),
+            }
+            .create(&output_file)?;
+
+            // Send the points to the writer
+            for (point, itn) in zip(points, intensity) {
+                let r: DynRecord = DynRecord(vec![
+                    Field::F32(vec![point[0]]),
+                    Field::F32(vec![point[1]]),
+                    Field::F32(vec![point[2]]),
+                    Field::F32(vec![itn]),
+                ]);
+                writer.push(&r)?;
+            }
+
+            // Finalize the writer
+            writer.finish()?;
         }
+
         Ok(())
     }
 
