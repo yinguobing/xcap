@@ -30,8 +30,8 @@ enum Commands {
         output_dir: Option<PathBuf>,
 
         /// Topics to be extracted, separated by comma. Example: "topic,another/topic,/yet/another/topic"
-        #[arg(long)]
-        topics: Option<String>,
+        #[arg(long, value_delimiter = ' ', num_args = 1..)]
+        topics: Option<Vec<String>>,
 
         /// Scale the point cloud in spatial by this factor in preview. Default: 1.0
         #[arg(long)]
@@ -61,8 +61,8 @@ enum Commands {
         input: String,
 
         /// Topics to be visualized, separated by comma. Example: "topic,another/topic,/yet/another/topic"
-        #[arg(long)]
-        topics: Option<String>,
+        #[arg(long, value_delimiter = ' ', num_args = 1..)]
+        topics: Option<Vec<String>>,
 
         /// Scale the point cloud by this factor. Default: 1.0
         #[arg(long)]
@@ -400,11 +400,7 @@ async fn main() {
             cleanup(&download_path);
             return;
         };
-        target_topics = topic_str
-            .trim()
-            .split(',')
-            .map(|t| t.to_string())
-            .collect::<Vec<_>>();
+        target_topics = topic_str.clone();
         if target_topics.is_empty() {
             error!("No topic specified. Use `--topics` to set topics.");
             cleanup(&download_path);
