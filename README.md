@@ -2,10 +2,26 @@
 Single binary to extract ROS messages from MCAP files.
 
 ## Features
-- Supported messages: CompressedImage, PointCloud2
-- Support sliced MCAP files.
-- Support MinIO as input source.
+- Supported messages: `Image`, `CompressedImage`, `PointCloud2`
+- Support sliced MCAP files
 - Visualization with Rerun
+- Support MinIO as input source
+
+## Installation
+Download the latest release from the [releases page](https://github.com/yinguobing/xcap/releases).
+
+Install using `dpkg`:
+```bash
+sudo dpkg -i xcap_<version>_amd64.deb
+```
+
+**Optional** Install Rerun viewer if you need realtime visualization:
+```bash
+# install with
+cargo install rerun-cli
+# or..
+pip install rerun-sdk
+```
 
 ## Usage
 Xcap supports MCAP file extracting, trimming and visualization.
@@ -13,7 +29,7 @@ Xcap supports MCAP file extracting, trimming and visualization.
 ### Extract
 Extract from a local directory containing multiple MCAP files
 ```bash
-xcap extract -i /path/to/mcap/dir -o /path/to/output --topics="/lidar,/image"
+xcap extract -i /path/to/mcap/dir -o /path/to/output --topics /lidar /image
 ```
 
 Extract from a MinIO bucket:
@@ -21,12 +37,7 @@ Extract from a MinIO bucket:
 export S3_ACCESS_KEY="YOUR_KEY"
 export S3_SECRET_KEY="YOUR_SECRET"
 export S3_REGION="YOUR_REGION"
-xcap extract -i "http://your_minio:port/bucket_name/path/to/one_of_the_mcap_file.mcap" -o /path/to/output --topics="/lidar,/image"
-```
-
-In case you want to preview the content during extracing, use `--preview` flag:
-```bash
-xcap extract -i /path/to/mcap/dir -o /path/to/output --topics="/lidar" --preview
+xcap extract -i "http://your_minio:port/bucket_name/path/to/one_of_the_mcap_file.mcap" -o /path/to/output --topics /lidar /image
 ```
 
 ### Trim
@@ -36,17 +47,9 @@ xcap trim -i /path/to/mcap/dir --time-off "2024-12-05 09:50:20" --time-stop "202
 ```
 
 ### Visualize
-A [Rerun](https://rerun.io/) viewer is required to visualize the data. Install it first:
-```bash
-# install with
-cargo install rerun-cli
-# or..
-pip install rerun-sdk
-```
-
 Visualize the data, do not dump any to disk.
 ```bash
-xcap show -i /path/to/mcap/dir --topics="/lidar"
+xcap show -i /path/to/mcap/dir --topics /lidar
 ```
 
 ## Build
@@ -60,10 +63,3 @@ Build the deb package if you want to share it with others
 cargo deb --package xcap --install
 ```
 
-## Installation
-Download the latest release from the [releases page](https://github.com/yinguobing/xcap/releases).
-
-Install using `dpkg`:
-```bash
-sudo dpkg -i xcap_<version>_amd64.deb
-```
