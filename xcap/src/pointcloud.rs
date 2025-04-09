@@ -99,7 +99,7 @@ impl Extractor for Parser {
             .collect();
         let intensity: Vec<f32> = PointCloud2Iterator::new(&cloud_msg)
             .into_iter()
-            .map(|p| f32::from(p.last().unwrap().last().unwrap().clone()) * self.intensity_scale)
+            .map(|p| f32::from(p[3][0]) * self.intensity_scale)
             .collect();
 
         // Visualize?
