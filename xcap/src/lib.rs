@@ -132,6 +132,7 @@ pub fn process(
     trim_start: i64,
     trim_end: i64,
     trim_only: bool,
+    bars: MultiProgress,
 ) -> Result<(), Error> {
     // Visualization setup, Ego content from disk file
     let ego = include_bytes!("/home/robin/Documents/3d-models/ego.glb").to_vec();
@@ -154,12 +155,12 @@ pub fn process(
     }
 
     // Setup a progress bar as this could be a time consuming process.
-    let bars = MultiProgress::new();
     let sty = ProgressStyle::with_template(
         "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
     )
     .unwrap()
     .progress_chars("##-");
+
     let mut bar_handles: HashMap<&str, ProgressBar> = HashMap::new();
 
     // Create a parser group for all different topics.
@@ -227,27 +228,9 @@ pub fn process(
             topic_name,
             bars.add(ProgressBar::new(topic.msg_count.unwrap_or(0))),
         );
-        for h in bar_handles.values_mut() {
-            h.set_style(sty.clone());
-        }
     }
-
-    // Progress bar for trimming
-    if trim_start
-        != chrono::NaiveDateTime::parse_from_str("1970-1-1 00:00:00", "%Y-%m-%d %H:%M:%S")
-            .unwrap()
-            .and_utc()
-            .timestamp_nanos_opt()
-            .unwrap()
-    {
-        let bar_style = ProgressStyle::with_template("{spinner:.blue} {msg}")
-            .unwrap()
-            .tick_strings(&["▰▱▱▱▱", "▰▰▱▱▱", "▰▰▰▱▱", "▰▰▰▰▱", "▰▰▰▰▰", "▰▱▱▱▱"]);
-        let bar = ProgressBar::new_spinner()
-            .with_message("Fast forwarding...")
-            .with_style(bar_style);
-        bar.enable_steady_tick(std::time::Duration::from_millis(200));
-        bar_handles.insert("fastforward", bars.add(bar));
+    for h in bar_handles.values_mut() {
+        h.set_style(sty.clone());
     }
 
     // Trim only mode?
@@ -260,7 +243,7 @@ pub fn process(
     };
 
     // Enumerate all files
-    for file in files.iter() {
+    'loop_file: for file in files.iter() {
         // Read in files
         let fd = fs::File::open(file)?;
         let mmap = unsafe { memmap2::Mmap::map(&fd)? };
@@ -278,13 +261,9 @@ pub fn process(
             if msg.publish_time < trim_start as u64 {
                 continue;
             }
-            let _ = bar_handles
-                .get("fastforward")
-                .and_then(|b| Some(b.finish_and_clear()));
-
             if msg.publish_time > trim_end as u64 {
-                info!("Trimming end reached.");
-                break;
+                info!("Stop time reached");
+                break 'loop_file;
             }
 
             // Parse message

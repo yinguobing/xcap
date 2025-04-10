@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use env_logger::Env;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{error, info, warn};
 use rand::Rng;
 use std::sync::atomic::AtomicBool;
@@ -242,9 +242,17 @@ async fn main() {
     let mut download_path: Option<PathBuf> = None;
     let sigint = Arc::new(AtomicBool::new(false));
 
+    // Progress bar setup
+    let bars = MultiProgress::new();
+
     // Logger setup
-    let log_env = Env::default().filter_or("LOG_LEVEL", "info");
-    env_logger::init_from_env(log_env);
+    let logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).build();
+    let level = logger.filter();
+    indicatif_log_bridge::LogWrapper::new(bars.clone(), logger)
+        .try_init()
+        .unwrap();
+    log::set_max_level(level);
 
     // Catch SIGINT
     let handler_sigint = sigint.clone();
@@ -423,8 +431,15 @@ async fn main() {
         (None, None)
     };
 
+    // Progress spinner
+    let bar_style = ProgressStyle::with_template("{spinner:.blue} {msg}").unwrap();
+    let bar = ProgressBar::new_spinner()
+        .with_message("Processing...")
+        .with_style(bar_style);
+    bar.enable_steady_tick(std::time::Duration::from_millis(100));
+    let pb = bars.add(bar);
+
     // Process
-    info!("Processing...");
     let ret = process(
         &files,
         &output_dir,
@@ -438,9 +453,11 @@ async fn main() {
         start_time,
         stop_time,
         trim_only,
+        bars,
     );
 
     // Cleanup
+    pb.finish_and_clear();
     cleanup(&download_path);
 
     // Will block program execution!
