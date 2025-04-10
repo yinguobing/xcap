@@ -232,6 +232,24 @@ pub fn process(
         }
     }
 
+    // Progress bar for trimming
+    if trim_start
+        != chrono::NaiveDateTime::parse_from_str("1970-1-1 00:00:00", "%Y-%m-%d %H:%M:%S")
+            .unwrap()
+            .and_utc()
+            .timestamp_nanos_opt()
+            .unwrap()
+    {
+        let bar_style = ProgressStyle::with_template("{spinner:.blue} {msg}")
+            .unwrap()
+            .tick_strings(&["▰▱▱▱▱", "▰▰▱▱▱", "▰▰▰▱▱", "▰▰▰▰▱", "▰▰▰▰▰", "▰▱▱▱▱"]);
+        let bar = ProgressBar::new_spinner()
+            .with_message("Fast forwarding...")
+            .with_style(bar_style);
+        bar.enable_steady_tick(std::time::Duration::from_millis(200));
+        bar_handles.insert("fastforward", bars.add(bar));
+    }
+
     // Trim only mode?
     let mut trim_out = if trim_only {
         Some(mcap::Writer::new(std::io::BufWriter::new(
@@ -260,6 +278,10 @@ pub fn process(
             if msg.publish_time < trim_start as u64 {
                 continue;
             }
+            let _ = bar_handles
+                .get("fastforward")
+                .and_then(|b| Some(b.finish_and_clear()));
+
             if msg.publish_time > trim_end as u64 {
                 info!("Trimming end reached.");
                 break;
