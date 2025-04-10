@@ -257,7 +257,7 @@ async fn main() {
     // Catch SIGINT
     let handler_sigint = sigint.clone();
     ctrlc::set_handler(move || {
-        warn!("received Ctrl+C! Mission aborted by user.");
+        warn!("Mission aborted by user");
         handler_sigint.store(true, std::sync::atomic::Ordering::Relaxed);
     })
     .expect("Error setting Ctrl-C handler");
