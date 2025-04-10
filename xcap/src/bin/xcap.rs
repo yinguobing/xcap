@@ -257,7 +257,7 @@ async fn main() {
     // Catch SIGINT
     let handler_sigint = sigint.clone();
     ctrlc::set_handler(move || {
-        warn!("Mission aborted by user");
+        warn!("Ctrl-C received");
         handler_sigint.store(true, std::sync::atomic::Ordering::Relaxed);
     })
     .expect("Error setting Ctrl-C handler");
@@ -470,9 +470,8 @@ async fn main() {
 
     // Take aways
     match ret {
-        Ok(_) => {
-            info!("Done.");
-        }
+        Ok(_) => info!("Done."),
+        Err(xcap::Error::Interrupted) => warn!("Interrupted"),
         Err(e) => {
             error!("{}", e);
             warn!("Sorry, job failed.");
