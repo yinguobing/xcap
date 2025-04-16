@@ -432,7 +432,7 @@ async fn main() {
     };
 
     // Progress spinner
-    let bar_style = ProgressStyle::with_template("{spinner:.blue} {msg}").unwrap();
+    let bar_style = ProgressStyle::with_template("{spinner} {msg}").unwrap();
     let bar = ProgressBar::new_spinner()
         .with_message("Processing...")
         .with_style(bar_style);
