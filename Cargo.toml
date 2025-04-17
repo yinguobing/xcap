@@ -5,6 +5,7 @@ members = [
     "ros2-sensor-msgs",
     "ros2-std-msgs",
     "ros2-geometry-msgs",
+    "ros2-nav-msgs",
 ]
 
 resolver = "2"
@@ -13,6 +14,7 @@ resolver = "2"
 ros2-sensor-msgs = { path = "./ros2-sensor-msgs", version = "0.1.0" }
 ros2-geometry-msgs = { path = "./ros2-geometry-msgs", version = "0.1.0" }
 ros2-std-msgs = { path = "./ros2-std-msgs", version = "0.1.0" }
+ros2-nav-msgs = { path = "./ros2-nav-msgs", version = "0.1.0" }
 ros2-builtin-interfaces = { path = "./ros2-builtin-interfaces", version = "0.1.0" }
 serde = { version = "1.0.204", features = ["derive"] }
 env_logger = "0.11.5"
