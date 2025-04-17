@@ -73,6 +73,24 @@ pub struct Pose2D {
 }
 
 #[derive(Deserialize, PartialEq, Clone, Debug)]
+pub struct PoseStamped {
+    header: Header,
+    pose: Pose,
+}
+
+#[derive(Deserialize, PartialEq, Clone, Debug)]
+pub struct PoseWithCovariance {
+    // This represents a pose in free space with uncertainty.
+    pose: Pose,
+
+    // Row-major representation of the 6x6 covariance matrix
+    // The orientation parameters use a fixed-axis representation.
+    // In order, the parameters are:
+    // (x, y, z, rotation about X axis, rotation about Y axis, rotation about Z axis)
+    covariance: Vec<f64>,
+}
+
+#[derive(Deserialize, PartialEq, Clone, Debug)]
 pub struct Transform {
     pub translation: Vector3,
     pub rotation: Quaternion,
@@ -95,6 +113,18 @@ pub struct Twist {
 pub struct TwistStamped {
     pub header: Header,
     pub twist: Twist,
+}
+
+#[derive(Deserialize, PartialEq, Clone, Debug)]
+pub struct TwistWithCovariance {
+    // This expresses velocity in free space with uncertainty.
+    twist: Twist,
+
+    // Row-major representation of the 6x6 covariance matrix
+    // The orientation parameters use a fixed-axis representation.
+    // In order, the parameters are:
+    // (x, y, z, rotation about X axis, rotation about Y axis, rotation about Z axis)
+    covariance: Vec<f64>,
 }
 
 #[derive(Deserialize, PartialEq, Clone, Debug)]
