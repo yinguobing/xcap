@@ -16,6 +16,7 @@ openh264 = "0.6.3"
 indicatif = { version = "0.17.8", features = ["rayon"] }
 image = "0.25.2"
 ros2-sensor-msgs = { workspace = true }
+ros2-builtin-interfaces = { workspace = true }
 thiserror = "1.0.63"
 env_logger = { workspace = true }
 log = { workspace = true }

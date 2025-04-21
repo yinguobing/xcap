@@ -13,6 +13,7 @@ mod extractor;
 mod image;
 mod pointcloud;
 pub mod storage;
+mod timestamp;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -183,6 +184,12 @@ pub fn process(
 
         // Create parser by topic format
         match topic.format.as_str() {
+            "builtin_interfaces/msg/Time" => {
+                parsers.insert(
+                    topic.name.as_str(),
+                    Box::new(timestamp::Parser::new(vis_stream.clone())),
+                );
+            }
             "sensor_msgs/msg/Image" => {
                 parsers.insert(
                     topic.name.as_str(),
