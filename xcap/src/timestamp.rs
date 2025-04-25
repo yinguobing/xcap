@@ -41,12 +41,15 @@ impl Extractor for Parser {
             .map_err(|e| Error::CDR(e))?;
 
         if let Some(rec) = &self.rec_stream {
-            rec.set_time_seconds("main", stamp.sec as f64 + stamp.nanosec as f64 * 1e-9);
+            rec.set_timestamp_secs_since_epoch(
+                "main",
+                stamp.sec as f64 + stamp.nanosec as f64 * 1e-9,
+            );
 
             // CPU
             rec.log(
                 message.channel.topic.clone(),
-                &rerun::Scalar::new(stamp.sec as f64 + stamp.nanosec as f64 * 1e-9),
+                &rerun::Scalars::new([stamp.sec as f64 + stamp.nanosec as f64 * 1e-9]),
             )
             .unwrap();
         }

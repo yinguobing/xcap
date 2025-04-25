@@ -26,7 +26,7 @@ reqwest = "0.11.27"
 url = "2.5.2"
 rand = "0.8.5"
 ctrlc = "3.4.5"
-rerun = { version = "0.22.1", features = ["native_viewer"] }
+rerun = { version = "0.23.0", features = ["native_viewer"] }
 quaternion-core = "0.5.2"
 colorgrad = "0.7.0"
 chrono = "0.4.39"

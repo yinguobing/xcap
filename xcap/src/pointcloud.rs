@@ -108,7 +108,7 @@ impl Extractor for Parser {
                 let [r, g, b, a] = self.color_map.at(*i).to_rgba8();
                 rerun::Color::from_unmultiplied_rgba(r, g, b, a)
             });
-            rec.set_time_seconds(
+            rec.set_timestamp_secs_since_epoch(
                 "main",
                 cloud_msg.header.stamp.sec as f64 + cloud_msg.header.stamp.nanosec as f64 * 1e-9,
             );
