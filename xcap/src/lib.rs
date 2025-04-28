@@ -1,4 +1,5 @@
-use extractor::Extractor;
+use crate::extractor::Extractor;
+use crate::parser::{compressed_image, image, pointcloud, timestamp};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{error, info, warn};
 use std::sync::{atomic::AtomicBool, Arc};
@@ -8,12 +9,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-mod compressed_image;
 mod extractor;
-mod image;
-mod pointcloud;
+mod parser;
 pub mod storage;
-mod timestamp;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
