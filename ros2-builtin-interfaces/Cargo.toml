@@ -1,5 +1,6 @@
 [package]
 name = "ros2-builtin-interfaces"
+description = "essage definitions for types in the OMG IDL Platform Specific Model"
 version = "0.1.0"
 edition = "2021"
 
