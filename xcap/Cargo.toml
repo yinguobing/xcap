@@ -16,7 +16,6 @@ openh264 = "0.6.3"
 indicatif = { version = "0.17.8", features = ["rayon"] }
 image = "0.25.2"
 ros2-sensor-msgs = { workspace = true }
-ros2-builtin-interfaces = { workspace = true }
 thiserror = "1.0.63"
 env_logger = { workspace = true }
 log = { workspace = true }
@@ -36,6 +35,7 @@ imageproc = "0.25.0"
 libyuv = "1.0.0"
 pcd-rs = "0.12.0"
 indicatif-log-bridge = "0.2.3"
+ros2_builtin_interfaces = "0.1.0"
 
 [features]
 native_viewer = []

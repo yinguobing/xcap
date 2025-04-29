@@ -7,4 +7,4 @@ edition = "2021"
 serde = { workspace = true }
 ros2-std-msgs = { workspace = true }
 ros2-geometry-msgs = { workspace = true }
-ros2-builtin-interfaces = { workspace = true }
+ros2_builtin_interfaces = "0.1.0"
