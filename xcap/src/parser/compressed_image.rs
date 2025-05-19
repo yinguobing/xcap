@@ -1,4 +1,5 @@
 use crate::extractor::Extractor;
+use crate::visual::Visual;
 use log::error;
 use mcap::Message;
 use rerun::RecordingStream;
@@ -95,6 +96,26 @@ impl Extractor for Parser {
     }
 
     fn post_process(&mut self, _sigint: Arc<AtomicBool>) -> Result<(), Self::ExtractorError> {
+        Ok(())
+    }
+}
+
+impl Visual for CompressedImage {
+    type VisualizeError = Box<dyn std::error::Error>;
+
+    fn visualize(
+        &self,
+        entity_path: &str,
+        rec: &RecordingStream,
+    ) -> Result<(), Self::VisualizeError> {
+        rec.set_timestamp_secs_since_epoch(
+            "main",
+            self.header.stamp.sec as f64 + self.header.stamp.nanosec as f64 * 1e-9,
+        );
+        rec.log(
+            entity_path,
+            &rerun::EncodedImage::from_file_contents(self.data.clone()),
+        )?;
         Ok(())
     }
 }
