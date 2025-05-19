@@ -4,5 +4,9 @@ pub trait Visual {
     type VisualizeError;
 
     /// Function to visualize the data with Rerun.
-    fn visualize(&self, rec: &RecordingStream) -> Result<(), Self::VisualizeError>;
+    fn visualize(
+        &self,
+        entity_path: &str,
+        rec: &RecordingStream,
+    ) -> Result<(), Self::VisualizeError>;
 }
