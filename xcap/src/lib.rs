@@ -12,6 +12,7 @@ use std::{
 mod extractor;
 mod parser;
 pub mod storage;
+mod visual;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -116,6 +117,18 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
     let mut topics: Vec<Topic> = topics.into_values().collect();
     topics.sort_by_key(|k| k.id);
     Ok(topics)
+}
+
+pub fn show(
+    file: &PathBuf,
+    topics: Vec<Topic>,
+    time_off: Option<i64>,
+    time_stop: Option<i64>,
+    sigint: Arc<AtomicBool>,
+    vis_stream: rerun::RecordingStream,
+    bars: MultiProgress,
+) {
+    todo!()
 }
 
 pub fn process(
