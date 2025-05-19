@@ -70,15 +70,7 @@ impl Extractor for Parser {
 
         // Visualize?
         if let Some(rec) = &self.rec_stream {
-            rec.set_timestamp_secs_since_epoch(
-                "main",
-                deserialized.header.stamp.sec as f64
-                    + deserialized.header.stamp.nanosec as f64 * 1e-9,
-            );
-            rec.log(
-                format!("image/{}", message.channel.topic.clone()),
-                &rerun::EncodedImage::from_file_contents(deserialized.data.clone()),
-            )?;
+            deserialized.visualize(&message.channel.topic, rec)?
         }
 
         // Dump data?
