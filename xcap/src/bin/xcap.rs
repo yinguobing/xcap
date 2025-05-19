@@ -246,7 +246,8 @@ async fn main() {
 
     // Logger setup
     let logger =
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).build();
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error"))
+            .build();
     let level = logger.filter();
     indicatif_log_bridge::LogWrapper::new(bars.clone(), logger)
         .try_init()
