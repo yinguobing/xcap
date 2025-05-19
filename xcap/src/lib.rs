@@ -290,9 +290,7 @@ pub fn process(
     }
 
     // Post process
-    info!("Post processing...");
-    for (name, parser) in parsers.iter_mut() {
-        info!("- {}", name);
+    for (_, parser) in parsers.iter_mut() {
         parser
             .post_process(sigint.clone())
             .map_err(|e| Error::ParserError(e.to_string()))?;

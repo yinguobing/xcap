@@ -1,6 +1,5 @@
 use clap::{Parser, Subcommand};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use log::{error, info, warn};
 use rand::Rng;
 use std::sync::atomic::AtomicBool;
 use std::{env, fs, path::PathBuf, sync::Arc};
@@ -172,7 +171,7 @@ async fn prepare_inputs(
         })?;
         download_path.clone_from(&Some(_down_path.clone()));
 
-        info!("Downloading from bucket: {}", bucket);
+        println!("Downloading from bucket: {}", bucket);
         storage
             .download_dir(bucket, object_dir, &_down_path, sigint)
             .await
@@ -212,10 +211,10 @@ fn cleanup(local_path: &Option<PathBuf>) {
     if let Some(path) = local_path {
         match std::fs::remove_dir_all(path) {
             Ok(_) => {
-                info!("Temp directory cleaned.");
+                println!("Temp directory cleaned.");
             }
             Err(e) => {
-                error!("Failed to remove directory: {}. {}", path.display(), e);
+                println!("Failed to remove directory: {}. {}", path.display(), e);
             }
         }
     }
@@ -257,7 +256,7 @@ async fn main() {
     // Catch SIGINT
     let handler_sigint = sigint.clone();
     ctrlc::set_handler(move || {
-        warn!("Ctrl-C received");
+        println!("Ctrl-C received");
         handler_sigint.store(true, std::sync::atomic::Ordering::Relaxed);
     })
     .expect("Error setting Ctrl-C handler");
@@ -326,7 +325,7 @@ async fn main() {
     let files = match prepare_inputs(&input, &mut download_path, &sigint).await {
         Ok(f) => f,
         Err(e) => {
-            error!("{}", e.0);
+            println!("{}", e.0);
             cleanup(&download_path);
             return;
         }
@@ -336,27 +335,27 @@ async fn main() {
         return;
     }
     if files.is_empty() {
-        error!("No MCAP files found.");
+        println!("No MCAP files found.");
         cleanup(&download_path);
         return;
     }
-    info!("Found MCAP files: {}", files.len());
+    println!("Found MCAP files: {}", files.len());
     for f in files.iter() {
-        info!("- {}", f.display());
+        println!("- {}", f.display());
     }
 
     // Summary this job, this will log useful info such as topics for user.
     let topics_in_mcap = match summary(&files) {
         Ok(t) => t,
         Err(e) => {
-            error!("{}", e);
+            println!("{}", e);
             cleanup(&download_path);
             return;
         }
     };
-    info!("Found topics: {}", topics_in_mcap.len());
+    println!("Found topics: {}", topics_in_mcap.len());
     for topic in topics_in_mcap.iter() {
-        info!("- {}", topic);
+        println!("- {}", topic);
     }
 
     // Output directory
@@ -364,14 +363,14 @@ async fn main() {
         .clone()
         .unwrap_or(std::env::current_dir().unwrap());
     if dump_data {
-        info!("Output directory: {}", output_dir.display());
+        println!("Output directory: {}", output_dir.display());
     }
 
     // Start time and stop time
     let start_time = match chrono::NaiveDateTime::parse_from_str(&time_off, "%Y-%m-%d %H:%M:%S") {
         Ok(t) => t.and_utc().timestamp_nanos_opt().unwrap(),
         Err(e) => {
-            error!("Parse start time failed, {}", e);
+            println!("Parse start time failed, {}", e);
             cleanup(&download_path);
             return;
         }
@@ -385,7 +384,7 @@ async fn main() {
         ) {
             Ok(t) => t.and_utc().timestamp_nanos_opt().unwrap(),
             Err(e) => {
-                error!("Parse stop time failed, {}", e);
+                println!("Parse stop time failed, {}", e);
                 cleanup(&download_path);
                 return;
             }
@@ -404,19 +403,19 @@ async fn main() {
 
     if !trim_only {
         let Some(topic_str) = topics else {
-            error!("No topic specified. Use `--topics` to set topics.");
+            println!("No topic specified. Use `--topics` to set topics.");
             cleanup(&download_path);
             return;
         };
         target_topics = topic_str.clone();
         if target_topics.is_empty() {
-            error!("No topic specified. Use `--topics` to set topics.");
+            println!("No topic specified. Use `--topics` to set topics.");
             cleanup(&download_path);
             return;
         }
         for topic_name in target_topics.iter() {
             let Some(_) = topics_in_mcap.iter().find(|t| t.name == *topic_name) else {
-                error!("Topic not found: {}", topic_name);
+                println!("Topic not found: {}", topic_name);
                 cleanup(&download_path);
                 return;
             };
@@ -470,11 +469,11 @@ async fn main() {
 
     // Take aways
     match ret {
-        Ok(_) => info!("Done."),
-        Err(xcap::Error::Interrupted) => warn!("Interrupted"),
+        Ok(_) => println!("Done."),
+        Err(xcap::Error::Interrupted) => print!("Interrupted"),
         Err(e) => {
-            error!("{}", e);
-            warn!("Sorry, job failed.");
+            println!("{}", e);
+            print!("Sorry, job failed.");
         }
     }
 }
