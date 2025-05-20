@@ -10,8 +10,6 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
 };
 
-const ZSTD_MAGIC_NUMBER: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
-
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("Interrupted.")]
@@ -56,12 +54,7 @@ impl Extractor for Parser {
     type ExtractorError = Box<dyn std::error::Error>;
 
     fn step(&mut self, message: &Message) -> Result<(), Self::ExtractorError> {
-        let buf = message.data.as_ref();
-        let serialized = if &message.data[..4] == ZSTD_MAGIC_NUMBER {
-            zstd::stream::decode_all(buf).map_err(|e| Error::Zstd(e))?
-        } else {
-            message.data.to_vec()
-        };
+        let serialized = self.decode(message)?;
         let deserialized = cdr::deserialize_from::<_, CompressedImage, _>(
             serialized.as_slice(),
             cdr::size::Infinite,
