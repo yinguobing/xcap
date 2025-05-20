@@ -119,6 +119,7 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
     Ok(topics)
 }
 
+#[allow(unused_variables)]
 pub fn show(
     file: &PathBuf,
     topics: Vec<Topic>,
