@@ -5,7 +5,7 @@ use ros2_sensor_msgs::msg::Image;
 use std::{
     fs,
     io::Write,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{atomic::AtomicBool, Arc},
 };
 
@@ -14,31 +14,27 @@ pub enum Error {
     #[error("ZSTD error. {0}")]
     Zstd(#[from] std::io::Error),
     #[error("CDR error. {0}")]
-    CDR(#[from] cdr::Error),
+    Cdr(#[from] cdr::Error),
 }
 
 pub struct Parser {
     // Output directory
-    output_dir: PathBuf,
+    output_dir: Option<PathBuf>,
 
     // Visualizer with rerun
     rec_stream: Option<RecordingStream>,
-
-    // Should dump data to disk
-    dump_data: bool,
 }
 
 impl Parser {
-    pub fn new(output_path: &Path, rerun_stream: Option<RecordingStream>, dump_data: bool) -> Self {
+    pub fn new(output_path: &Option<PathBuf>, rerun_stream: Option<RecordingStream>) -> Self {
         // Create output dir
-        if dump_data {
-            fs::create_dir_all(output_path).unwrap();
+        if let Some(output_dir) = output_path {
+            fs::create_dir_all(output_dir).unwrap();
         }
 
         Parser {
-            output_dir: output_path.into(),
+            output_dir: output_path.clone(),
             rec_stream: rerun_stream,
-            dump_data,
         }
     }
 }
@@ -50,7 +46,7 @@ impl Extractor for Parser {
         let serialized = self.decode(message)?;
         let image_msg =
             cdr::deserialize_from::<_, Image, _>(serialized.as_slice(), cdr::size::Infinite)
-                .map_err(|e| Error::CDR(e))?;
+                .map_err(Error::Cdr)?;
 
         let mut buf: Vec<u8> = vec![];
         let (height_rgb, rgb) = if image_msg.encoding != "nv12" {
@@ -76,6 +72,7 @@ impl Extractor for Parser {
             (height_rgb as u32, &buf)
         };
 
+        // Visualization
         if let Some(rec) = &self.rec_stream {
             rec.set_timestamp_secs_since_epoch(
                 "main",
@@ -85,28 +82,21 @@ impl Extractor for Parser {
                 message.channel.topic.clone(),
                 &rerun::Image::from_elements(
                     rgb,
-                    [image_msg.width, height_rgb as u32],
+                    [image_msg.width, height_rgb],
                     rerun::ColorModel::RGB,
                 ),
             )?;
         }
 
-        // Create output file
-        if self.dump_data {
-            let mut file = fs::File::create(
-                &self
-                    .output_dir
-                    .join(format!("{}.bin", message.publish_time)),
-            )?;
+        // Dump data
+        if let Some(output_dir) = &self.output_dir {
+            let mut file =
+                fs::File::create(output_dir.join(format!("{}.bin", message.publish_time)))?;
             file.write_all(&image_msg.data)?;
-            let img = image::RgbImage::from_vec(image_msg.width, height_rgb as u32, rgb.to_owned())
+            let img = image::RgbImage::from_vec(image_msg.width, height_rgb, rgb.to_owned())
                 .expect("Image should be valid");
 
-            img.save(
-                &self
-                    .output_dir
-                    .join(format!("{}.jpg", message.publish_time)),
-            )?;
+            img.save(output_dir.join(format!("{}.jpg", message.publish_time)))?;
         }
         Ok(())
     }

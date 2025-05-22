@@ -7,11 +7,11 @@ pub trait Extractor {
 
     /// Decode the compressed message
     fn decode(&self, message: &Message) -> Result<Vec<u8>, std::io::Error> {
-        if &message.data[..4] == ZSTD_MAGIC_NUMBER {
-            return zstd::stream::decode_all(message.data.as_ref());
+        if message.data[..4] == ZSTD_MAGIC_NUMBER {
+            zstd::stream::decode_all(message.data.as_ref())
         } else {
-            return Ok(message.data.to_vec());
-        };
+            Ok(message.data.to_vec())
+        }
     }
 
     /// Function to be called for every message.

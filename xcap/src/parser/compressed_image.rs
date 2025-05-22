@@ -6,7 +6,7 @@ use rerun::RecordingStream;
 use ros2_sensor_msgs::msg::CompressedImage;
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{atomic::AtomicBool, Arc},
 };
 
@@ -19,33 +19,29 @@ pub enum Error {
     #[error("ZSTD error. {0}")]
     Zstd(#[from] std::io::Error),
     #[error("CDR error. {0}")]
-    CDR(#[from] cdr::Error),
+    Cdr(#[from] cdr::Error),
     #[error("Image error. {0}")]
     Image(#[from] image::ImageError),
 }
 
 pub struct Parser {
     // Output directory
-    output_dir: PathBuf,
+    output_dir: Option<PathBuf>,
 
     // Visualizer with rerun
     rec_stream: Option<RecordingStream>,
-
-    // Should dump data to disk
-    dump_data: bool,
 }
 
 impl Parser {
-    pub fn new(output_path: &Path, rerun_stream: Option<RecordingStream>, dump_data: bool) -> Self {
+    pub fn new(output_path: &Option<PathBuf>, rerun_stream: Option<RecordingStream>) -> Self {
         // Create output dir
-        if dump_data {
-            fs::create_dir_all(output_path).unwrap();
+        if let Some(output_dir) = output_path {
+            fs::create_dir_all(output_dir).unwrap();
         }
 
         Parser {
-            output_dir: output_path.into(),
+            output_dir: output_path.clone(),
             rec_stream: rerun_stream,
-            dump_data,
         }
     }
 }
@@ -59,16 +55,16 @@ impl Extractor for Parser {
             serialized.as_slice(),
             cdr::size::Infinite,
         )
-        .map_err(|e| Error::CDR(e))?;
+        .map_err(Error::Cdr)?;
 
-        // Visualize?
+        // Visualization?
         if let Some(rec) = &self.rec_stream {
             deserialized.visualize(&message.channel.topic, rec)?
         }
 
         // Dump data?
-        if self.dump_data {
-            let path = self.output_dir.join(format!(
+        if let Some(output_dir) = &self.output_dir {
+            let path = output_dir.join(format!(
                 "{}-{}.{}",
                 deserialized.header.stamp.sec,
                 deserialized.header.stamp.nanosec,

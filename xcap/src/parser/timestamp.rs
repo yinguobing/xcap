@@ -9,7 +9,7 @@ pub enum Error {
     #[error("ZSTD error. {0}")]
     Zstd(#[from] std::io::Error),
     #[error("CDR error. {0}")]
-    CDR(#[from] cdr::Error),
+    Cdr(#[from] cdr::Error),
 }
 
 pub struct Parser {
@@ -31,7 +31,7 @@ impl Extractor for Parser {
     fn step(&mut self, message: &Message) -> Result<(), Self::ExtractorError> {
         let serialized = self.decode(message)?;
         let stamp = cdr::deserialize_from::<_, Time, _>(serialized.as_slice(), cdr::size::Infinite)
-            .map_err(|e| Error::CDR(e))?;
+            .map_err(Error::Cdr)?;
 
         if let Some(rec) = &self.rec_stream {
             rec.set_timestamp_secs_since_epoch(

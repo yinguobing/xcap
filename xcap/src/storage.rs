@@ -81,7 +81,7 @@ impl Agent {
             if sigint.load(std::sync::atomic::Ordering::Relaxed) {
                 break;
             }
-            let obj_file = object.split('/').last().unwrap();
+            let obj_file = object.split('/').next_back().unwrap();
             let obj_file_path = local_path.join(obj_file);
             info!("Downloading: {}", obj_file);
             self.download_object(bucket, object, &obj_file_path).await?;
@@ -112,7 +112,7 @@ impl Agent {
         if response.status().is_success() {
             fs::write(
                 local_path,
-                response.bytes().await.map_err(|e| Error::RequestError(e))?,
+                response.bytes().await.map_err(Error::RequestError)?,
             )?;
         }
         Ok(())

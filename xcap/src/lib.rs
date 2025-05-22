@@ -2,12 +2,9 @@ use crate::extractor::Extractor;
 use crate::parser::{compressed_image, image, pointcloud, timestamp};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{error, info, warn};
+use std::path::Path;
 use std::sync::{atomic::AtomicBool, Arc};
-use std::{
-    collections::HashMap,
-    fs, io,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, fs, io, path::PathBuf};
 
 mod extractor;
 mod parser;
@@ -119,32 +116,17 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
     Ok(topics)
 }
 
-#[allow(unused_variables)]
-pub fn show(
-    file: &PathBuf,
-    topics: Vec<Topic>,
-    time_off: Option<i64>,
-    time_stop: Option<i64>,
-    sigint: Arc<AtomicBool>,
-    vis_stream: rerun::RecordingStream,
-    bars: MultiProgress,
-) {
-    todo!()
-}
-
-pub fn process(
-    files: &Vec<PathBuf>,
-    output_dir: &Path,
-    topic_names: &Vec<String>,
+pub fn dump_n_visualize(
+    files: &[PathBuf],
+    output_dir: &Option<PathBuf>,
+    target_topics: &Option<Vec<String>>,
     sigint: Arc<AtomicBool>,
     vis_stream: Option<rerun::RecordingStream>,
-    dump_data: bool,
-    point_cloud_scale: Option<f32>,
-    intensity_scale: Option<f32>,
-    topics: Vec<Topic>,
-    trim_start: i64,
-    trim_end: i64,
-    trim_only: bool,
+    point_cloud_scale: &Option<f32>,
+    intensity_scale: &Option<f32>,
+    topics_in_mcap: &[Topic],
+    time_off: i64,
+    time_stop: i64,
     bars: MultiProgress,
 ) -> Result<(), Error> {
     // Visualization setup, Ego content from disk file
@@ -181,85 +163,66 @@ pub fn process(
         &str,
         Box<dyn Extractor<ExtractorError = Box<dyn std::error::Error>>>,
     > = HashMap::new();
-    for topic_name in topic_names {
-        // Locate corresponding topic
-        let topic = topics
-            .iter()
-            .find(|x| x.name == *topic_name)
-            .ok_or(Error::InvalidTopic(format!(
-                "Topic not found: {}",
-                topic_name
-            )))?;
+    if let Some(ref topic_names) = target_topics {
+        for topic_name in topic_names.iter() {
+            // Output dir
+            let out_dir = output_dir
+                .as_ref()
+                .map(|p| p.join(topic_name.trim_start_matches("/")));
 
-        // Using topic name as output directory path
-        let output_dir = output_dir.join(PathBuf::from(topic_name.trim_start_matches('/')));
+            // Create parser by topic format
+            match topic_name.as_str() {
+                "builtin_interfaces/msg/Time" => {
+                    parsers.insert(
+                        topic_name,
+                        Box::new(timestamp::Parser::new(vis_stream.clone())),
+                    );
+                }
+                "sensor_msgs/msg/Image" => {
+                    parsers.insert(
+                        topic_name,
+                        Box::new(image::Parser::new(&out_dir, vis_stream.clone())),
+                    );
+                }
+                "sensor_msgs/msg/CompressedImage" => {
+                    parsers.insert(
+                        topic_name,
+                        Box::new(compressed_image::Parser::new(&out_dir, vis_stream.clone())),
+                    );
+                }
+                "sensor_msgs/msg/PointCloud2" => {
+                    parsers.insert(
+                        topic_name,
+                        Box::new(pointcloud::Parser::new(
+                            &out_dir,
+                            vis_stream.clone(),
+                            point_cloud_scale,
+                            intensity_scale,
+                        )),
+                    );
+                }
+                _ => {
+                    return Err(Error::InvalidTopic(format!(
+                        "Topic format not supported: {}",
+                        topic_name,
+                    )));
+                }
+            }
 
-        // Create parser by topic format
-        match topic.format.as_str() {
-            "builtin_interfaces/msg/Time" => {
-                parsers.insert(
-                    topic.name.as_str(),
-                    Box::new(timestamp::Parser::new(vis_stream.clone())),
-                );
-            }
-            "sensor_msgs/msg/Image" => {
-                parsers.insert(
-                    topic.name.as_str(),
-                    Box::new(image::Parser::new(
-                        &output_dir,
-                        vis_stream.clone(),
-                        dump_data,
-                    )),
-                );
-            }
-            "sensor_msgs/msg/CompressedImage" => {
-                parsers.insert(
-                    topic.name.as_str(),
-                    Box::new(compressed_image::Parser::new(
-                        &output_dir,
-                        vis_stream.clone(),
-                        dump_data,
-                    )),
-                );
-            }
-            "sensor_msgs/msg/PointCloud2" => {
-                parsers.insert(
-                    topic.name.as_str(),
-                    Box::new(pointcloud::Parser::new(
-                        &output_dir,
-                        vis_stream.clone(),
-                        dump_data,
-                        point_cloud_scale,
-                        intensity_scale,
-                    )),
-                );
-            }
-            _ => {
-                return Err(Error::InvalidTopic(format!(
-                    "Topic format not supported: {}",
-                    topic.format
-                )));
-            }
+            // Init progress bars
+            let topic = topics_in_mcap
+                .iter()
+                .find(|t| &t.name == topic_name)
+                .unwrap();
+            bar_handles.insert(
+                topic_name,
+                bars.add(ProgressBar::new(topic.msg_count.unwrap_or(0))),
+            );
         }
-
-        // Init progress bars
-        bar_handles.insert(
-            topic_name,
-            bars.add(ProgressBar::new(topic.msg_count.unwrap_or(0))),
-        );
     }
     for h in bar_handles.values_mut() {
         h.set_style(sty.clone());
     }
-
-    // Trim only mode?
-    let mut trim_out = if trim_only {
-        Some(mcap::Writer::new(std::io::BufWriter::new(
-            fs::File::create("trim.mcap")?,
-        ))?)
-    } else {
-        None
-    };
 
     // Enumerate all files
     'loop_file: for file in files.iter() {
@@ -277,29 +240,25 @@ pub fn process(
             let msg = message?;
 
             // Trim start/end
-            if msg.publish_time < trim_start as u64 {
+            if msg.publish_time < time_off as u64 {
                 continue;
             }
-            if msg.publish_time > trim_end as u64 {
+            if msg.publish_time > time_stop as u64 {
                 info!("Stop time reached");
                 break 'loop_file;
             }
 
             // Parse message
             let topic_name = msg.channel.topic.as_str();
-            if trim_only {
-                trim_out.as_mut().unwrap().write(&msg)?;
-            } else {
-                let Some(parser) = parsers.get_mut(topic_name) else {
-                    continue;
-                };
-                parser
-                    .step(&msg)
-                    .map_err(|e| Error::ParserError(e.to_string()))?;
-                let bar = bar_handles.get(topic_name).unwrap();
-                bar.set_message(topic_name.to_string());
-                bar.inc(1);
-            }
+            let Some(parser) = parsers.get_mut(topic_name) else {
+                continue;
+            };
+            parser
+                .step(&msg)
+                .map_err(|e| Error::ParserError(e.to_string()))?;
+            let bar = bar_handles.get(topic_name).unwrap();
+            bar.set_message(topic_name.to_string());
+            bar.inc(1);
         }
     }
 
@@ -309,9 +268,58 @@ pub fn process(
             .post_process(sigint.clone())
             .map_err(|e| Error::ParserError(e.to_string()))?;
     }
-    if trim_only {
-        trim_out.unwrap().finish()?;
+
+    Ok(())
+}
+
+pub fn trim(
+    files: &[PathBuf],
+    output_dir: &Path,
+    sigint: Arc<AtomicBool>,
+    time_off: i64,
+    time_stop: i64,
+) -> Result<(), Error> {
+    // Setup a progress bar as this could be a time consuming process.
+    let sty = ProgressStyle::with_template(
+        "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
+    )
+    .unwrap()
+    .progress_chars("##-");
+
+    // Trim only mode?
+    let mut trim_out = mcap::Writer::new(std::io::BufWriter::new(fs::File::create(
+        output_dir.join("trim.mcap"),
+    )?))?;
+
+    // Enumerate all files
+    'loop_file: for file in files.iter() {
+        // Read in files
+        let fd = fs::File::open(file)?;
+        let mmap = unsafe { memmap2::Mmap::map(&fd)? };
+
+        // Enumerate all messages
+        for message in mcap::MessageStream::new(&mmap)? {
+            // Check for interrupt
+            if sigint.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(Error::Interrupted);
+            }
+
+            let msg = message?;
+
+            // Trim start/end
+            if msg.publish_time < time_off as u64 {
+                continue;
+            }
+            if msg.publish_time > time_stop as u64 {
+                info!("Stop time reached");
+                break 'loop_file;
+            }
+
+            trim_out.write(&msg)?;
+        }
     }
+
+    trim_out.finish()?;
 
     Ok(())
 }

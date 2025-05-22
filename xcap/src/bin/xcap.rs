@@ -4,95 +4,67 @@ use rand::Rng;
 use std::sync::atomic::AtomicBool;
 use std::{env, fs, path::PathBuf, sync::Arc};
 use url::Url;
-use xcap::{process, storage::Agent, summary};
+use xcap::{dump_n_visualize, storage::Agent, summary, trim};
 
 struct RuntimeError(String);
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = "Extract ROS messages from MCAP files.")]
 #[command(propagate_version = true)]
-struct Cli {
+struct Args {
     #[command(subcommand)]
     command: Commands,
+
+    /// Input resource. Could be a local directory or a remote S3 URL.
+    #[arg(short, long)]
+    input: String,
+
+    /// Topics to be extracted, separated by comma. Example: "topic,another/topic,/yet/another/topic"
+    #[arg(long, value_delimiter = ' ', num_args = 1..)]
+    topics: Option<Vec<String>>,
+
+    /// Scale the point cloud in spatial by this factor in preview. Default: 1.0
+    #[arg(long)]
+    point_cloud_scale: Option<f32>,
+
+    /// Scale the point cloud intensity by this factor in preview. Default: 1.0
+    #[arg(long)]
+    intensity_scale: Option<f32>,
+
+    /// Set the start time offset `HH:MM:SS` in UTC. Default: 00:00:00.
+    #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
+    time_off: String,
+
+    /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+    #[arg(long)]
+    time_stop: Option<String>,
+
+    /// Rerun viewer URL.
+    #[arg(long)]
+    viewer_url: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Visualize ROS messages from MCAP files.
+    Show,
+
     /// Extract ROS messages from MCAP files.
     Extract {
-        /// Input resource. Could be a local directory or a remote S3 URL.
-        #[arg(short, long)]
-        input: String,
-
         /// Output directory path.
         #[arg(short, long)]
-        output_dir: Option<PathBuf>,
-
-        /// Topics to be extracted, separated by comma. Example: "topic,another/topic,/yet/another/topic"
-        #[arg(long, value_delimiter = ' ', num_args = 1..)]
-        topics: Option<Vec<String>>,
-
-        /// Scale the point cloud in spatial by this factor in preview. Default: 1.0
-        #[arg(long)]
-        point_cloud_scale: Option<f32>,
-
-        /// Scale the point cloud intensity by this factor in preview. Default: 1.0
-        #[arg(long)]
-        intensity_scale: Option<f32>,
+        output_dir: PathBuf,
 
         /// Enable preview. Default: false
         #[arg(long, default_value_t = false)]
         preview: bool,
-
-        /// Set the start time offset `HH:MM:SS` in UTC. Default: 00:00:00.
-        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
-        time_off: String,
-
-        /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
-        #[arg(long)]
-        time_stop: Option<String>,
-    },
-
-    /// Visualize ROS messages from MCAP files.
-    Show {
-        /// Input resource. Could be a local directory or a remote S3 URL.
-        #[arg(short, long)]
-        input: String,
-
-        /// Topics to be visualized, separated by comma. Example: "topic,another/topic,/yet/another/topic"
-        #[arg(long, value_delimiter = ' ', num_args = 1..)]
-        topics: Option<Vec<String>>,
-
-        /// Scale the point cloud by this factor. Default: 1.0
-        #[arg(long)]
-        point_cloud_scale: Option<f32>,
-
-        /// Scale the point cloud intensity by this factor in preview. Default: 1.0
-        #[arg(long)]
-        intensity_scale: Option<f32>,
-
-        /// Set the start time offset `YEAR-MONTH-DAY HH:MM:SS` in UTC.
-        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
-        time_off: String,
-
-        /// Set the stop time `YEAR-MONTH-DAY HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
-        #[arg(long)]
-        time_stop: Option<String>,
     },
 
     /// Trim MCAP files.
     Trim {
-        /// Input resource. Could be a local directory or a remote S3 URL.
+        /// Output directory path.
         #[arg(short, long)]
-        input: String,
-
-        /// Set the start time offset `YEAR-MONTH-DAY HH:MM:SS` in UTC.
-        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
-        time_off: String,
-
-        /// Set the stop time `YEAR-MONTH-DAY HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
-        #[arg(long)]
-        time_stop: Option<String>,
+        output_dir: PathBuf,
     },
 }
 
@@ -118,21 +90,21 @@ async fn prepare_inputs(
             valid_url.scheme(),
             valid_url
                 .host_str()
-                .ok_or(RuntimeError(format!("URL host is None.")))?,
+                .ok_or(RuntimeError("URL host is None.".to_string()))?,
             valid_url
                 .port()
-                .ok_or(RuntimeError(format!("URL port is None.")))?,
+                .ok_or(RuntimeError("URL port is None.".to_string()))?,
         );
         let bucket = valid_url
             .path_segments()
-            .ok_or(RuntimeError(format!("Invalid URL path.")))?
+            .ok_or(RuntimeError("Invalid URL path.".to_string()))?
             .next()
-            .ok_or(RuntimeError(format!("Failed to get bucket name.")))?;
+            .ok_or(RuntimeError("Failed to get bucket name.".to_string()))?;
         let obj_name = valid_url
             .path_segments()
             .unwrap()
-            .last()
-            .ok_or(RuntimeError(format!("Failed to get object name.")))?;
+            .next_back()
+            .ok_or(RuntimeError("Failed to get object name.".to_string()))?;
         let object_dir = valid_url
             .path()
             .trim_start_matches('/')
@@ -232,29 +204,20 @@ fn make_rerun_stream() -> (
         let strm = builder.spawn().expect("Rerun should be spawned");
         (strm, None)
     };
-    return (stream, storage);
+    (stream, storage)
 }
 
 #[tokio::main]
 async fn main() {
-    // Initialization
-    let mut download_path: Option<PathBuf> = None;
-    let sigint = Arc::new(AtomicBool::new(false));
-
-    // Progress bar setup
-    let bars = MultiProgress::new();
-
     // Logger setup
     let logger =
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error"))
             .build();
     let level = logger.filter();
-    indicatif_log_bridge::LogWrapper::new(bars.clone(), logger)
-        .try_init()
-        .unwrap();
     log::set_max_level(level);
 
     // Catch SIGINT
+    let sigint = Arc::new(AtomicBool::new(false));
     let handler_sigint = sigint.clone();
     ctrlc::set_handler(move || {
         println!("Ctrl-C received");
@@ -262,68 +225,13 @@ async fn main() {
     })
     .expect("Error setting Ctrl-C handler");
 
-    // Parse user args
-    let cli = Cli::parse();
-    let (
-        input,
-        output_dir,
-        topics,
-        visualize,
-        dump_data,
-        point_cloud_scale,
-        intensity_scale,
-        time_off,
-        time_stop,
-    ) = match &cli.command {
-        Commands::Extract {
-            input,
-            output_dir,
-            topics,
-            preview,
-            point_cloud_scale,
-            intensity_scale,
-            time_off,
-            time_stop,
-        } => (
-            input,
-            output_dir,
-            topics,
-            preview,
-            true,
-            *point_cloud_scale,
-            *intensity_scale,
-            time_off,
-            time_stop,
-        ),
-        Commands::Show {
-            input,
-            topics,
-            point_cloud_scale,
-            intensity_scale,
-            time_off,
-            time_stop,
-        } => (
-            input,
-            &None,
-            topics,
-            &true,
-            false,
-            *point_cloud_scale,
-            *intensity_scale,
-            time_off,
-            time_stop,
-        ),
-        Commands::Trim {
-            input,
-            time_off,
-            time_stop,
-        } => (
-            input, &None, &None, &true, false, None, None, time_off, time_stop,
-        ),
-    };
+    // Parse common args
+    let args = Args::parse();
 
-    // Prepare inputs
-    let files = match prepare_inputs(&input, &mut download_path, &sigint).await {
+    // Prepare input files
+    let input = &args.input;
+    let mut download_path: Option<PathBuf> = None;
+    let files = match prepare_inputs(input, &mut download_path, &sigint).await {
         Ok(f) => f,
         Err(e) => {
             println!("{}", e.0);
@@ -355,20 +263,41 @@ async fn main() {
         }
     };
     println!("Found topics: {}", topics_in_mcap.len());
-    for topic in topics_in_mcap.iter() {
-        println!("- {}", topic);
-    }
+    topics_in_mcap.iter().for_each(|t| println!("- {}", t));
 
-    // Output directory
-    let output_dir = output_dir
-        .clone()
-        .unwrap_or(std::env::current_dir().unwrap());
-    if dump_data {
-        println!("Output directory: {}", output_dir.display());
-    }
+    // Check target topics to make sure they make sense for extraction and
+    // visualization. Trim does not need this.
+    let target_topics = match &args.command {
+        Commands::Extract { .. } | Commands::Show => {
+            if args.topics.is_none() {
+                println!("No topics specified.");
+                cleanup(&download_path);
+                return;
+            }
+            for topic_name in args.topics.as_ref().unwrap().iter() {
+                if !topics_in_mcap.iter().any(|t| &t.name == topic_name) {
+                    println!("Topic not found: {}", topic_name);
+                    cleanup(&download_path);
+                    return;
+                }
+            }
+            args.topics
+        }
+        Commands::Trim { .. } => None,
+    };
+
+    // Notice user about the output directory
+    let output_dir = match &args.command {
+        Commands::Extract { output_dir, .. } | Commands::Trim { output_dir } => {
+            println!("Output directory: {}", output_dir.display());
+            Some(output_dir.clone())
+        }
+        _ => None,
+    };
 
     // Start time and stop time
-    let start_time = match chrono::NaiveDateTime::parse_from_str(&time_off, "%Y-%m-%d %H:%M:%S") {
+    let time_off = match chrono::NaiveDateTime::parse_from_str(&args.time_off, "%Y-%m-%d %H:%M:%S")
+    {
         Ok(t) => t.and_utc().timestamp_nanos_opt().unwrap(),
         Err(e) => {
             println!("Parse start time failed, {}", e);
@@ -376,13 +305,10 @@ async fn main() {
             return;
         }
     };
-    let stop_time = if time_stop.is_none() {
+    let time_stop = if args.time_stop.is_none() {
         i64::MAX
     } else {
-        match chrono::NaiveDateTime::parse_from_str(
-            time_stop.as_ref().unwrap(),
-            "%Y-%m-%d %H:%M:%S",
-        ) {
+        match chrono::NaiveDateTime::parse_from_str(&args.time_stop.unwrap(), "%Y-%m-%d %H:%M:%S") {
             Ok(t) => t.and_utc().timestamp_nanos_opt().unwrap(),
             Err(e) => {
                 println!("Parse stop time failed, {}", e);
@@ -392,46 +318,20 @@ async fn main() {
         }
     };
 
-    // Trim only mode?
-    let trim_only = match &cli.command {
-        Commands::Trim { .. } => true,
-        _ => false,
-    };
-
-    // Check target topics to make sure they make sense for extraction and
-    // visualization. Trim does not need this.
-    let mut target_topics: Vec<String> = vec![];
-
-    if !trim_only {
-        let Some(topic_str) = topics else {
-            println!("No topic specified. Use `--topics` to set topics.");
-            cleanup(&download_path);
-            return;
-        };
-        target_topics = topic_str.clone();
-        if target_topics.is_empty() {
-            println!("No topic specified. Use `--topics` to set topics.");
-            cleanup(&download_path);
-            return;
-        }
-        for topic_name in target_topics.iter() {
-            let Some(_) = topics_in_mcap.iter().find(|t| t.name == *topic_name) else {
-                println!("Topic not found: {}", topic_name);
-                cleanup(&download_path);
-                return;
-            };
-        }
-    }
-
     // Visualize required?
-    let (rerun_stream, storage) = if *visualize && !trim_only {
-        let (stm, sto) = make_rerun_stream();
-        (Some(stm), sto)
-    } else {
-        (None, None)
+    let (vis_stream, storage) = match args.command {
+        Commands::Extract { preview: true, .. } | Commands::Show => {
+            let (stm, sto) = make_rerun_stream();
+            (Some(stm), sto)
+        }
+        _ => (None, None),
     };
 
-    // Progress spinner
+    // Progress bar setup
+    let bars = MultiProgress::new();
+    indicatif_log_bridge::LogWrapper::new(bars.clone(), logger)
+        .try_init()
+        .unwrap();
     let bar_style = ProgressStyle::with_template("{spinner} {msg}").unwrap();
     let bar = ProgressBar::new_spinner()
         .with_message("Processing...")
@@ -440,21 +340,22 @@ async fn main() {
     let pb = bars.add(bar);
 
     // Process
-    let ret = process(
-        &files,
-        &output_dir,
-        &target_topics,
-        sigint,
-        rerun_stream,
-        dump_data,
-        point_cloud_scale,
-        intensity_scale,
-        topics_in_mcap,
-        start_time,
-        stop_time,
-        trim_only,
-        bars,
-    );
+    let ret = match args.command {
+        Commands::Extract { .. } | Commands::Show => dump_n_visualize(
+            &files,
+            &output_dir,
+            &target_topics,
+            sigint,
+            vis_stream,
+            &args.point_cloud_scale,
+            &args.intensity_scale,
+            &topics_in_mcap,
+            time_off,
+            time_stop,
+            bars,
+        ),
+        Commands::Trim { output_dir } => trim(&files, &output_dir, sigint, time_off, time_stop),
+    };
 
     // Cleanup
     pb.finish_and_clear();

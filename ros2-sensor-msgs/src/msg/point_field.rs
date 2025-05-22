@@ -51,7 +51,7 @@ impl From<Datatype> for f32 {
             Datatype::UINT16(v) => v as f32,
             Datatype::INT32(v) => v as f32,
             Datatype::UINT32(v) => v as f32,
-            Datatype::FLOAT32(v) => v as f32,
+            Datatype::FLOAT32(v) => v,
             Datatype::FLOAT64(v) => v as f32,
         }
     }

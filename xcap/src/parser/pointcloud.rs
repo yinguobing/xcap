@@ -8,7 +8,7 @@ use std::{
     fs,
     io::Write,
     iter::zip,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{atomic::AtomicBool, Arc},
 };
 
@@ -17,18 +17,15 @@ pub enum Error {
     #[error("ZSTD error. {0}")]
     Zstd(#[from] std::io::Error),
     #[error("CDR error. {0}")]
-    CDR(#[from] cdr::Error),
+    Cdr(#[from] cdr::Error),
 }
 
 pub struct Parser {
     // Output directory
-    output_dir: PathBuf,
+    output_dir: Option<PathBuf>,
 
     // Visualizer with rerun
     rec_stream: Option<RecordingStream>,
-
-    // Should dump data to disk
-    dump_data: bool,
 
     // Scale the points in spatial domain? This could be usefull if users want to visualize the pointcloud in a
     // different spatial scale.
@@ -43,21 +40,19 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(
-        output_path: &Path,
+        output_path: &Option<PathBuf>,
         rerun_stream: Option<RecordingStream>,
-        dump_data: bool,
-        spatial_scale: Option<f32>,
-        intensity_scale: Option<f32>,
+        spatial_scale: &Option<f32>,
+        intensity_scale: &Option<f32>,
     ) -> Self {
         // Create output dir
-        if dump_data {
-            fs::create_dir_all(output_path).unwrap();
+        if let Some(output_dir) = output_path {
+            fs::create_dir_all(output_dir).unwrap();
         }
 
         Parser {
-            output_dir: output_path.into(),
+            output_dir: output_path.clone(),
             rec_stream: rerun_stream,
-            dump_data,
             spatial_scale: spatial_scale.unwrap_or(1.0),
             intensity_scale: intensity_scale.unwrap_or(1.0),
             color_map: colorgrad::GradientBuilder::new()
@@ -77,11 +72,10 @@ impl Extractor for Parser {
         let serialized = self.decode(message)?;
         let cloud_msg =
             cdr::deserialize_from::<_, PointCloud2, _>(serialized.as_slice(), cdr::size::Infinite)
-                .map_err(|e| Error::CDR(e))?;
+                .map_err(Error::Cdr)?;
 
         // Extract points and intensity
         let points: Vec<rerun::Position3D> = PointCloud2Iterator::new(&cloud_msg)
-            .into_iter()
             .map(|p| {
                 rerun::Position3D::new(
                     f32::from(p[0][0]) * self.spatial_scale,
@@ -91,7 +85,6 @@ impl Extractor for Parser {
             })
             .collect();
         let intensity: Vec<f32> = PointCloud2Iterator::new(&cloud_msg)
-            .into_iter()
             .map(|p| f32::from(p[3][0]) * self.intensity_scale)
             .collect();
 
@@ -114,11 +107,9 @@ impl Extractor for Parser {
         }
 
         // Create output file
-        if self.dump_data {
+        if let Some(output_dir) = &self.output_dir {
             // Output binary file
-            let mut output_file = self
-                .output_dir
-                .join(format!("{}.bin", message.publish_time));
+            let mut output_file = output_dir.join(format!("{}.bin", message.publish_time));
             let mut file = fs::File::create(&output_file)?;
             file.write_all(&cloud_msg.data)?;
 
