@@ -263,7 +263,7 @@ async fn main() {
         }
     };
     println!("Found topics: {}", topics_in_mcap.len());
-    topics_in_mcap.iter().for_each(|t| println!("- {}", t));
+    topics_in_mcap.iter().for_each(|t| println!("{}", t));
 
     // Check target topics to make sure they make sense for extraction and
     // visualization. Trim does not need this.
@@ -281,9 +281,9 @@ async fn main() {
                     return;
                 }
             }
-            args.topics
+            args.topics.unwrap()
         }
-        Commands::Trim { .. } => None,
+        Commands::Trim { .. } => Vec::new(),
     };
 
     // Notice user about the output directory

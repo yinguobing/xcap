@@ -119,7 +119,7 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
 pub fn dump_n_visualize(
     files: &[PathBuf],
     output_dir: &Option<PathBuf>,
-    target_topics: &Option<Vec<String>>,
+    target_topics: &[String],
     sigint: Arc<AtomicBool>,
     vis_stream: Option<rerun::RecordingStream>,
     point_cloud_scale: &Option<f32>,
@@ -163,63 +163,68 @@ pub fn dump_n_visualize(
         &str,
         Box<dyn Extractor<ExtractorError = Box<dyn std::error::Error>>>,
     > = HashMap::new();
-    if let Some(ref topic_names) = target_topics {
-        for topic_name in topic_names.iter() {
-            // Output dir
-            let out_dir = output_dir
-                .as_ref()
-                .map(|p| p.join(topic_name.trim_start_matches("/")));
+    for topic_name in target_topics.iter() {
+        // Find the topic with this name
+        let topic = topics_in_mcap
+            .iter()
+            .find(|&t| &t.name == topic_name)
+            .ok_or(Error::InvalidTopic(topic_name.clone()))?;
 
-            // Create parser by topic format
-            match topic_name.as_str() {
-                "builtin_interfaces/msg/Time" => {
-                    parsers.insert(
-                        topic_name,
-                        Box::new(timestamp::Parser::new(vis_stream.clone())),
-                    );
-                }
-                "sensor_msgs/msg/Image" => {
-                    parsers.insert(
-                        topic_name,
-                        Box::new(image::Parser::new(&out_dir, vis_stream.clone())),
-                    );
-                }
-                "sensor_msgs/msg/CompressedImage" => {
-                    parsers.insert(
-                        topic_name,
-                        Box::new(compressed_image::Parser::new(&out_dir, vis_stream.clone())),
-                    );
-                }
-                "sensor_msgs/msg/PointCloud2" => {
-                    parsers.insert(
-                        topic_name,
-                        Box::new(pointcloud::Parser::new(
-                            &out_dir,
-                            vis_stream.clone(),
-                            point_cloud_scale,
-                            intensity_scale,
-                        )),
-                    );
-                }
-                _ => {
-                    return Err(Error::InvalidTopic(format!(
-                        "Topic format not supported: {}",
-                        topic_name,
-                    )));
-                }
+        // Output dir
+        let out_dir = output_dir
+            .as_ref()
+            .map(|p| p.join(topic_name.trim_start_matches("/")));
+
+        // Create parser by topic format
+        match topic.format.as_str() {
+            "builtin_interfaces/msg/Time" => {
+                parsers.insert(
+                    topic_name,
+                    Box::new(timestamp::Parser::new(vis_stream.clone())),
+                );
             }
-
-            // Init progress bars
-            let topic = topics_in_mcap
-                .iter()
-                .find(|t| &t.name == topic_name)
-                .unwrap();
-            bar_handles.insert(
-                topic_name,
-                bars.add(ProgressBar::new(topic.msg_count.unwrap_or(0))),
-            );
+            "sensor_msgs/msg/Image" => {
+                parsers.insert(
+                    topic_name,
+                    Box::new(image::Parser::new(&out_dir, vis_stream.clone())),
+                );
+            }
+            "sensor_msgs/msg/CompressedImage" => {
+                parsers.insert(
+                    topic_name,
+                    Box::new(compressed_image::Parser::new(&out_dir, vis_stream.clone())),
+                );
+            }
+            "sensor_msgs/msg/PointCloud2" => {
+                parsers.insert(
+                    topic_name,
+                    Box::new(pointcloud::Parser::new(
+                        &out_dir,
+                        vis_stream.clone(),
+                        point_cloud_scale,
+                        intensity_scale,
+                    )),
+                );
+            }
+            _ => {
+                return Err(Error::InvalidTopic(format!(
+                    "'{}' of format '{}' is not supported yet.",
+                    topic_name, topic.format
+                )));
+            }
         }
+
+        // Init progress bars
+        let topic = topics_in_mcap
+            .iter()
+            .find(|t| &t.name == topic_name)
+            .unwrap();
+        bar_handles.insert(
+            topic_name,
+            bars.add(ProgressBar::new(topic.msg_count.unwrap_or(0))),
+        );
     }
+
     for h in bar_handles.values_mut() {
         h.set_style(sty.clone());
     }
