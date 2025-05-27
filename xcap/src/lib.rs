@@ -284,14 +284,7 @@ pub fn trim(
     time_off: i64,
     time_stop: i64,
 ) -> Result<(), Error> {
-    // Setup a progress bar as this could be a time consuming process.
-    let sty = ProgressStyle::with_template(
-        "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
-    )
-    .unwrap()
-    .progress_chars("##-");
-
-    // Trim only mode?
+    // Output file
     let mut trim_out = mcap::Writer::new(std::io::BufWriter::new(fs::File::create(
         output_dir.join("trim.mcap"),
     )?))?;

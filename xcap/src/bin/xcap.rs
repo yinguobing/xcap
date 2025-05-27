@@ -14,57 +14,97 @@ struct RuntimeError(String);
 struct Args {
     #[command(subcommand)]
     command: Commands,
-
-    /// Input resource. Could be a local directory or a remote S3 URL.
-    #[arg(short, long)]
-    input: String,
-
-    /// Topics to be extracted, separated by comma. Example: "topic,another/topic,/yet/another/topic"
-    #[arg(long, value_delimiter = ' ', num_args = 1..)]
-    topics: Option<Vec<String>>,
-
-    /// Scale the point cloud in spatial by this factor in preview. Default: 1.0
-    #[arg(long)]
-    point_cloud_scale: Option<f32>,
-
-    /// Scale the point cloud intensity by this factor in preview. Default: 1.0
-    #[arg(long)]
-    intensity_scale: Option<f32>,
-
-    /// Set the start time offset `HH:MM:SS` in UTC. Default: 00:00:00.
-    #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
-    time_off: String,
-
-    /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
-    #[arg(long)]
-    time_stop: Option<String>,
-
-    /// Rerun viewer URL.
-    #[arg(long)]
-    viewer_url: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Visualize ROS messages from MCAP files.
-    Show,
+    Show {
+        /// Input resource. Could be a local directory or a remote S3 URL.
+        #[arg(short, long)]
+        input: String,
+
+        /// Topics to be visualized, separated by space. Example: "/topic /another/topic /yet/another/topic"
+        #[arg(long, value_delimiter = ' ', num_args = 1..)]
+        topics: Option<Vec<String>>,
+
+        /// Scale the point cloud in spatial by this factor. Default: 1.0
+        #[arg(long)]
+        point_cloud_scale: Option<f32>,
+
+        /// Scale the point cloud intensity by this factor. Default: 1.0
+        #[arg(long)]
+        intensity_scale: Option<f32>,
+
+        /// Set the start time offset `HH:MM:SS` in UTC. Default: 00:00:00.
+        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
+        time_off: String,
+
+        /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+        #[arg(long)]
+        time_stop: Option<String>,
+
+        /// Rerun viewer URL.
+        #[arg(long)]
+        viewer_url: Option<String>,
+    },
 
     /// Extract ROS messages from MCAP files.
     Extract {
+        /// Input resource. Could be a local directory or a remote S3 URL.
+        #[arg(short, long)]
+        input: String,
+
         /// Output directory path.
         #[arg(short, long)]
         output_dir: PathBuf,
+
+        /// Topics to be extracted, separated by space. Example: "/topic /another/topic /yet/another/topic"
+        #[arg(long, value_delimiter = ' ', num_args = 1..)]
+        topics: Option<Vec<String>>,
+
+        /// Scale the point cloud in spatial by this factor. Default: 1.0
+        #[arg(long)]
+        point_cloud_scale: Option<f32>,
+
+        /// Scale the point cloud intensity by this factor. Default: 1.0
+        #[arg(long)]
+        intensity_scale: Option<f32>,
+
+        /// Set the start time offset `HH:MM:SS` in UTC. Default: 00:00:00.
+        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
+        time_off: String,
+
+        /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+        #[arg(long)]
+        time_stop: Option<String>,
 
         /// Enable preview. Default: false
         #[arg(long, default_value_t = false)]
         preview: bool,
+
+        /// Rerun viewer URL.
+        #[arg(long)]
+        viewer_url: Option<String>,
     },
 
     /// Trim MCAP files.
     Trim {
+        /// Input resource. Could be a local directory or a remote S3 URL.
+        #[arg(short, long)]
+        input: String,
+
         /// Output directory path.
         #[arg(short, long)]
         output_dir: PathBuf,
+
+        /// Set the start time offset `HH:MM:SS` in UTC. Default: 00:00:00.
+        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
+        time_off: String,
+
+        /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+        #[arg(long)]
+        time_stop: Option<String>,
     },
 }
 
@@ -229,7 +269,11 @@ async fn main() {
     let args = Args::parse();
 
     // Prepare input files
-    let input = &args.input;
+    let input = match &args.command {
+        Commands::Extract { input, .. } => input,
+        Commands::Show { input, .. } => input,
+        Commands::Trim { input, .. } => input,
+    };
     let mut download_path: Option<PathBuf> = None;
     let files = match prepare_inputs(input, &mut download_path, &sigint).await {
         Ok(f) => f,
@@ -268,36 +312,52 @@ async fn main() {
     // Check target topics to make sure they make sense for extraction and
     // visualization. Trim does not need this.
     let target_topics = match &args.command {
-        Commands::Extract { .. } | Commands::Show => {
-            if args.topics.is_none() {
+        Commands::Extract { topics, .. } | Commands::Show { topics, .. } => {
+            if topics.is_none() {
                 println!("No topics specified.");
                 cleanup(&download_path);
                 return;
             }
-            for topic_name in args.topics.as_ref().unwrap().iter() {
+            for topic_name in topics.as_ref().unwrap().iter() {
                 if !topics_in_mcap.iter().any(|t| &t.name == topic_name) {
                     println!("Topic not found: {}", topic_name);
                     cleanup(&download_path);
                     return;
                 }
             }
-            args.topics.unwrap()
+            topics.clone().unwrap()
         }
         Commands::Trim { .. } => Vec::new(),
     };
 
     // Notice user about the output directory
     let output_dir = match &args.command {
-        Commands::Extract { output_dir, .. } | Commands::Trim { output_dir } => {
+        Commands::Extract { output_dir, .. } | Commands::Trim { output_dir, .. } => {
             println!("Output directory: {}", output_dir.display());
             Some(output_dir.clone())
         }
-        _ => None,
+        Commands::Show { .. } => None,
     };
 
     // Start time and stop time
-    let time_off = match chrono::NaiveDateTime::parse_from_str(&args.time_off, "%Y-%m-%d %H:%M:%S")
-    {
+    let (time_off, time_stop) = match &args.command {
+        Commands::Extract {
+            time_off,
+            time_stop,
+            ..
+        } => (time_off, time_stop),
+        Commands::Show {
+            time_off,
+            time_stop,
+            ..
+        } => (time_off, time_stop),
+        Commands::Trim {
+            time_off,
+            time_stop,
+            ..
+        } => (time_off, time_stop),
+    };
+    let time_off = match chrono::NaiveDateTime::parse_from_str(time_off, "%Y-%m-%d %H:%M:%S") {
         Ok(t) => t.and_utc().timestamp_nanos_opt().unwrap(),
         Err(e) => {
             println!("Parse start time failed, {}", e);
@@ -305,10 +365,13 @@ async fn main() {
             return;
         }
     };
-    let time_stop = if args.time_stop.is_none() {
+    let time_stop = if time_stop.is_none() {
         i64::MAX
     } else {
-        match chrono::NaiveDateTime::parse_from_str(&args.time_stop.unwrap(), "%Y-%m-%d %H:%M:%S") {
+        match chrono::NaiveDateTime::parse_from_str(
+            time_stop.as_ref().unwrap(),
+            "%Y-%m-%d %H:%M:%S",
+        ) {
             Ok(t) => t.and_utc().timestamp_nanos_opt().unwrap(),
             Err(e) => {
                 println!("Parse stop time failed, {}", e);
@@ -320,7 +383,7 @@ async fn main() {
 
     // Visualize required?
     let (vis_stream, storage) = match args.command {
-        Commands::Extract { preview: true, .. } | Commands::Show => {
+        Commands::Extract { preview: true, .. } | Commands::Show { .. } => {
             let (stm, sto) = make_rerun_stream();
             (Some(stm), sto)
         }
@@ -341,20 +404,29 @@ async fn main() {
 
     // Process
     let ret = match args.command {
-        Commands::Extract { .. } | Commands::Show => dump_n_visualize(
+        Commands::Extract {
+            point_cloud_scale,
+            intensity_scale,
+            ..
+        }
+        | Commands::Show {
+            point_cloud_scale,
+            intensity_scale,
+            ..
+        } => dump_n_visualize(
             &files,
             &output_dir,
             &target_topics,
             sigint,
             vis_stream,
-            &args.point_cloud_scale,
-            &args.intensity_scale,
+            &point_cloud_scale,
+            &intensity_scale,
             &topics_in_mcap,
             time_off,
             time_stop,
             bars,
         ),
-        Commands::Trim { output_dir } => trim(&files, &output_dir, sigint, time_off, time_stop),
+        Commands::Trim { output_dir, .. } => trim(&files, &output_dir, sigint, time_off, time_stop),
     };
 
     // Cleanup
