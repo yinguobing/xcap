@@ -1,7 +1,7 @@
 use crate::extractor::Extractor;
 use mcap::Message;
 use rerun::RecordingStream;
-use ros2_sensor_msgs::msg::Image;
+use ros2_interfaces_humble::sensor_msgs::msg::Image;
 use std::{
     fs,
     io::Write,

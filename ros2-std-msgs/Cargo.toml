@@ -1,8 +1,0 @@
-[package]
-name = "ros2-std-msgs"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-ros2_builtin_interfaces = "0.1.0"
-serde = { workspace = true }

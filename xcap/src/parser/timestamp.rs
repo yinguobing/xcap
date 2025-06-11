@@ -1,7 +1,7 @@
 use crate::extractor::Extractor;
 use mcap::Message;
 use rerun::RecordingStream;
-use ros2_builtin_interfaces::msg::Time;
+use ros2_interfaces_humble::builtin_interfaces::msg::Time;
 use std::sync::{atomic::AtomicBool, Arc};
 
 #[derive(thiserror::Error, Debug)]

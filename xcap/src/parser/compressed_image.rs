@@ -3,7 +3,7 @@ use crate::visual::Visual;
 use log::error;
 use mcap::Message;
 use rerun::RecordingStream;
-use ros2_sensor_msgs::msg::CompressedImage;
+use ros2_interfaces_humble::sensor_msgs::msg::CompressedImage;
 use std::{
     fs,
     path::PathBuf,

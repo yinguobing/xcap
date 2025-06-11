@@ -1,19 +1,9 @@
 [workspace]
-members = [
-    "xcap",
-    "ros2-sensor-msgs",
-    "ros2-std-msgs",
-    "ros2-geometry-msgs",
-    "ros2-nav-msgs",
-]
+members = ["xcap"]
 
 resolver = "2"
 
 [workspace.dependencies]
-ros2-sensor-msgs = { path = "./ros2-sensor-msgs", version = "0.1.0" }
-ros2-geometry-msgs = { path = "./ros2-geometry-msgs", version = "0.1.0" }
-ros2-std-msgs = { path = "./ros2-std-msgs", version = "0.1.0" }
-ros2-nav-msgs = { path = "./ros2-nav-msgs", version = "0.1.0" }
 serde = { version = "1.0.219", features = ["derive"] }
 env_logger = "0.11.5"
 log = "0.4.22"

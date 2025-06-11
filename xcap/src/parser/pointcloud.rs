@@ -3,8 +3,9 @@ use colorgrad::Gradient;
 use mcap::Message;
 use pcd_rs::{DataKind, DynRecord, DynWriter, Field, Schema, ValueKind, WriterInit};
 use rerun::RecordingStream;
-use ros2_sensor_msgs::msg::{PointCloud2, PointCloud2Iterator};
+use ros2_interfaces_humble::sensor_msgs::msg::{PointCloud2, PointField};
 use std::{
+    collections::HashMap,
     fs,
     io::Write,
     iter::zip,
@@ -63,6 +64,45 @@ impl Parser {
                 .expect("Color map should be created"),
         }
     }
+
+    fn decode_pointcloud(&self, message: &PointCloud2) -> HashMap<String, Vec<f64>> {
+        let mut decoded: HashMap<String, Vec<f64>> = HashMap::new();
+        for field in message.fields.iter() {
+            let field_name = field.name.as_str();
+            let field_size = match field.datatype {
+                PointField::INT8 => std::mem::size_of::<i8>(),
+                PointField::UINT8 => std::mem::size_of::<u8>(),
+                PointField::INT16 => std::mem::size_of::<i16>(),
+                PointField::UINT16 => std::mem::size_of::<u16>(),
+                PointField::INT32 => std::mem::size_of::<i32>(),
+                PointField::UINT32 => std::mem::size_of::<u32>(),
+                PointField::FLOAT32 => std::mem::size_of::<f32>(),
+                PointField::FLOAT64 => std::mem::size_of::<f64>(),
+                0_u8 | 9_u8..=u8::MAX => panic!("Can not get data size, invalid datatype."),
+            };
+            let decode_fun: fn(&[u8]) -> f64 = match field.datatype {
+                PointField::INT8 => |x| f64::from(i8::from_ne_bytes(x.try_into().unwrap())),
+                PointField::UINT8 => |x| f64::from(u8::from_ne_bytes(x.try_into().unwrap())),
+                PointField::INT16 => |x| f64::from(i16::from_ne_bytes(x.try_into().unwrap())),
+                PointField::UINT16 => |x| f64::from(u16::from_ne_bytes(x.try_into().unwrap())),
+                PointField::INT32 => |x| f64::from(i32::from_ne_bytes(x.try_into().unwrap())),
+                PointField::UINT32 => |x| f64::from(u32::from_ne_bytes(x.try_into().unwrap())),
+                PointField::FLOAT32 => |x| f64::from(f32::from_ne_bytes(x.try_into().unwrap())),
+                PointField::FLOAT64 => |x| f64::from_ne_bytes(x.try_into().unwrap()),
+                0_u8 | 9_u8..=u8::MAX => panic!("Can not match decode function, invalid datatype."),
+            };
+            let num_points = message.width * message.height;
+            let mut values: Vec<f64> = Vec::with_capacity(num_points as usize);
+            for idx in 0..num_points {
+                let idx_start = message.point_step * idx + field.offset;
+                let idx_end = idx_start + field.count * field_size as u32;
+                let buf = &message.data[idx_start as usize..idx_end as usize];
+                values.push(decode_fun(buf));
+            }
+            decoded.insert(field_name.to_string(), values);
+        }
+        decoded
+    }
 }
 
 impl Extractor for Parser {
@@ -75,23 +115,26 @@ impl Extractor for Parser {
                 .map_err(Error::Cdr)?;
 
         // Extract points and intensity
-        let points: Vec<rerun::Position3D> = PointCloud2Iterator::new(&cloud_msg)
-            .map(|p| {
+        let decoded = self.decode_pointcloud(&cloud_msg);
+        let points = decoded["x"]
+            .iter()
+            .zip(decoded["y"].iter())
+            .zip(decoded["z"].iter())
+            .map(|((x, y), z)| {
                 rerun::Position3D::new(
-                    f32::from(p[0][0]) * self.spatial_scale,
-                    f32::from(p[1][0]) * self.spatial_scale,
-                    f32::from(p[2][0]) * self.spatial_scale,
+                    *x as f32 * self.spatial_scale,
+                    *y as f32 * self.spatial_scale,
+                    *z as f32 * self.spatial_scale,
                 )
-            })
-            .collect();
-        let intensity: Vec<f32> = PointCloud2Iterator::new(&cloud_msg)
-            .map(|p| f32::from(p[3][0]) * self.intensity_scale)
-            .collect();
+            });
+        let intensity = decoded["intensity"]
+            .iter()
+            .map(|p| *p as f32 * self.intensity_scale);
 
         // Visualize?
         if let Some(rec) = &self.rec_stream {
-            let colors = intensity.iter().map(|i| {
-                let [r, g, b, a] = self.color_map.at(*i).to_rgba8();
+            let colors = intensity.clone().map(|i| {
+                let [r, g, b, a] = self.color_map.at(i).to_rgba8();
                 rerun::Color::from_unmultiplied_rgba(r, g, b, a)
             });
             rec.set_timestamp_secs_since_epoch(
@@ -99,7 +142,7 @@ impl Extractor for Parser {
                 cloud_msg.header.stamp.sec as f64 + cloud_msg.header.stamp.nanosec as f64 * 1e-9,
             );
             rec.log(
-                format!("/world/cloud/{}", message.channel.topic.clone()),
+                message.channel.topic.clone(),
                 &rerun::Points3D::new(points.clone())
                     .with_colors(colors)
                     .with_radii([0.01]),

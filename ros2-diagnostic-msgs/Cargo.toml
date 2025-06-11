@@ -1,8 +1,0 @@
-[package]
-name = "ros2-diagnostic-msgs"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-serde = { workspace = true }
-ros2-std-msgs = { workspace = true }
