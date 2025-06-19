@@ -20,7 +20,7 @@ struct Args {
 enum Commands {
     /// Visualize ROS messages from MCAP files.
     Show {
-        /// Input resource. Could be a local directory or a remote S3 URL.
+        /// Input resource. Could be a MCAP file, a local directory or a remote S3 URL.
         #[arg(short, long)]
         input: String,
 
@@ -36,11 +36,11 @@ enum Commands {
         #[arg(long)]
         intensity_scale: Option<f32>,
 
-        /// Set the start time offset `HH:MM:SS` in UTC. Default: 00:00:00.
+        /// Set the start time offset in UTC.
         #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
         time_off: String,
 
-        /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+        /// Set the stop time `YEAR-MONTH-DAY HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
         #[arg(long)]
         time_stop: Option<String>,
 
@@ -200,16 +200,19 @@ async fn prepare_inputs(
         input_src = source.to_owned();
     }
 
-    let input_dir = PathBuf::from(input_src);
-    if !input_dir.exists() {
+    let input_path = PathBuf::from(input_src);
+    if !input_path.exists() {
         return Err(RuntimeError(format!(
-            "Input directory not found: {}",
-            input_dir.display()
+            "Input source not found: {}",
+            input_path.display()
         )));
     }
 
     // Find all MCAP files
-    let mut files: Vec<PathBuf> = fs::read_dir(&input_dir)
+    if input_path.is_file() {
+        return Ok(vec![input_path]);
+    }
+    let mut files: Vec<PathBuf> = fs::read_dir(&input_path)
         .map_err(|e| RuntimeError(format!("Failed to read directory: {}", e)))?
         .map(|f| f.unwrap().path())
         .filter(|f| f.is_file() && f.extension().is_some_and(|f| f.eq("mcap")))
