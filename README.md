@@ -27,6 +27,11 @@ pip install rerun-sdk
 Xcap supports MCAP file extracting, trimming and visualization.
 
 ### Extract
+Extract from a single MCAP file
+```bash
+xcap extract -i /path/to/your.mcap -o /path/to/output --topics /lidar /image
+```
+
 Extract from a local directory containing multiple MCAP files
 ```bash
 xcap extract -i /path/to/mcap/dir -o /path/to/output --topics /lidar /image
