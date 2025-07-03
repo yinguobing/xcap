@@ -61,7 +61,7 @@ impl std::fmt::Display for Topic {
 
 pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
     // Collect all topics
-    let mut topics: HashMap<u16, Topic> = HashMap::new();
+    let mut topics: HashMap<String, Topic> = HashMap::new();
 
     // Enumerate all files
     for file in files {
@@ -84,7 +84,7 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
         // Topics
         for chn in summary.channels {
             topics
-                .entry(chn.0)
+                .entry(chn.1.topic.clone())
                 .and_modify(|t| {
                     t.id = chn.0;
                     t.name.clone_from(&chn.1.topic);
