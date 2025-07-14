@@ -21,7 +21,6 @@ enum Commands {
     /// Visualize ROS messages from MCAP files.
     Show {
         /// Input resource. Could be a MCAP file, a local directory or a remote S3 URL.
-        #[arg(short, long)]
         input: String,
 
         /// Topics to be visualized, separated by space. Example: "/topic /another/topic /yet/another/topic"
@@ -52,7 +51,6 @@ enum Commands {
     /// Extract ROS messages from MCAP files.
     Extract {
         /// Input resource. Could be a local directory or a remote S3 URL.
-        #[arg(short, long)]
         input: String,
 
         /// Output directory path.
@@ -91,7 +89,6 @@ enum Commands {
     /// Trim MCAP files.
     Trim {
         /// Input resource. Could be a local directory or a remote S3 URL.
-        #[arg(short, long)]
         input: String,
 
         /// Output directory path.
