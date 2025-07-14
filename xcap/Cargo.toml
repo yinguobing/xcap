@@ -8,28 +8,28 @@ edition = "2021"
 
 [dependencies]
 cdr = "0.2.4"
-clap = { version = "4.5.9", features = ["derive"] }
-mcap = { version = "0.13.0" }
+clap = { version = "4.5.41", features = ["derive"] }
+mcap = { version = "0.13.3" }
 serde = { workspace = true }
-zstd = "0.13.2"
-openh264 = "0.6.3"
-indicatif = { version = "0.17.8", features = ["rayon"] }
-image = "0.25.2"
-thiserror = "1.0.63"
+zstd = "0.13.3"
+openh264 = "0.6.6"
+indicatif = { version = "0.18.0", features = ["rayon"] }
+image = "0.25.6"
+thiserror = "1.0.69"
 env_logger = { workspace = true }
 log = { workspace = true }
 minio = "0.1.0"
-tokio = "1.39.2"
+tokio = "1.46.1"
 reqwest = "0.11.27"
-url = "2.5.2"
+url = "2.5.4"
 rand = "0.8.5"
-ctrlc = "3.4.5"
-rerun = { version = "0.23.0", features = ["native_viewer"] }
-quaternion-core = "0.5.2"
-colorgrad = "0.7.0"
-chrono = "0.4.39"
-memmap2 = "0.9.5"
-bstr = "1.11.3"
+ctrlc = "3.4.7"
+rerun = { version = "0.23.4", features = ["native_viewer"] }
+quaternion-core = "0.5.4"
+colorgrad = "0.7.2"
+chrono = "0.4.41"
+memmap2 = "0.9.7"
+bstr = "1.12.0"
 imageproc = "0.25.0"
 libyuv = "1.0.0"
 pcd-rs = "0.12.0"
