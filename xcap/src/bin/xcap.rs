@@ -163,10 +163,10 @@ async fn prepare_inputs(
 
         const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
         const STR_LEN: usize = 6;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let rand_str: String = (0..STR_LEN)
             .map(|_| {
-                let idx = rng.gen_range(0..CHARSET.len());
+                let idx = rng.random_range(0..CHARSET.len());
                 CHARSET[idx] as char
             })
             .collect();
