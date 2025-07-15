@@ -1,15 +1,13 @@
-use log::{debug, error, info};
+use futures_util::StreamExt;
+use log::{error, info};
 use minio::s3::{
-    args::{BucketExistsArgs, ListObjectsV2Args, ObjectConditionalReadArgs},
     client::{Client, ClientBuilder},
     creds::StaticProvider,
     http::BaseUrl,
+    types::{S3Api, ToStream},
 };
+use std::path::{Path, PathBuf};
 use std::sync::{atomic::AtomicBool, Arc};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -55,10 +53,7 @@ impl Agent {
         sigint: &Arc<AtomicBool>,
     ) -> Result<(), Error> {
         // Check bucket exist or not.
-        let exists: bool = self
-            .client
-            .bucket_exists(&BucketExistsArgs::new(bucket)?)
-            .await?;
+        let exists: bool = self.client.bucket_exists(bucket).send().await?.exists;
         if !exists {
             error!("Bucket {} does not exist.", bucket);
             return Err(Error::NotExisted(bucket.to_string()));
@@ -66,11 +61,27 @@ impl Agent {
 
         // List objects
         let mut objects: Vec<String> = vec![];
-        let list_obj_args = ListObjectsV2Args::new(bucket)?;
-        let result = self.client.list_objects_v2(&list_obj_args).await?;
-        for item in result.contents.iter() {
-            objects.push(item.name.clone());
-            debug!("Found {}", item.name);
+        let mut resp = self
+            .client
+            .list_objects(bucket)
+            .recursive(true)
+            .use_api_v1(false) // use v2
+            .include_versions(true)
+            .to_stream()
+            .await;
+        while let Some(result) = resp.next().await {
+            match result {
+                Ok(resp) => {
+                    for item in resp.contents {
+                        objects.push(item.name);
+                    }
+                }
+
+                Err(e) => {
+                    error!("List object error.");
+                    return Err(Error::S3Error(e));
+                }
+            }
         }
 
         // Filter objects
@@ -97,24 +108,16 @@ impl Agent {
         local_path: &PathBuf,
     ) -> Result<(), Error> {
         // Check bucket exist or not.
-        let exists: bool = self
-            .client
-            .bucket_exists(&BucketExistsArgs::new(bucket)?)
-            .await?;
+        let exists: bool = self.client.bucket_exists(bucket).send().await?.exists;
         if !exists {
             error!("Bucket {} does not exist.", bucket);
             return Err(Error::NotExisted(bucket.to_string()));
         }
 
         // Download object
-        let obj_dscp = ObjectConditionalReadArgs::new(bucket, object)?;
-        let response = self.client.get_object(&obj_dscp).await?;
-        if response.status().is_success() {
-            fs::write(
-                local_path,
-                response.bytes().await.map_err(Error::RequestError)?,
-            )?;
-        }
+        let get_object = self.client.get_object(bucket, object).send().await?;
+        get_object.content.to_file(Path::new(local_path)).await?;
+
         Ok(())
     }
 }

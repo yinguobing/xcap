@@ -18,7 +18,7 @@ image = "0.25.6"
 thiserror = "1.0.69"
 env_logger = { workspace = true }
 log = { workspace = true }
-minio = "0.1.0"
+minio = "0.3.0"
 tokio = "1.46.1"
 reqwest = "0.11.27"
 url = "2.5.4"
@@ -35,6 +35,7 @@ libyuv = "1.0.0"
 pcd-rs = "0.12.0"
 indicatif-log-bridge = "0.2.3"
 ros2-interfaces-humble = { version = "0.0.1", features = ["sensor_msgs"] }
+futures-util = "0.3.31"
 
 [features]
 native_viewer = []
