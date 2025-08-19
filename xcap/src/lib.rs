@@ -130,7 +130,7 @@ pub fn dump_n_visualize(
     bars: MultiProgress,
 ) -> Result<(), Error> {
     // Visualization setup, Ego content from disk file
-    let ego = include_bytes!("/home/robin/Documents/3d-models/ego.glb").to_vec();
+    let ego = include_bytes!("../assets/luigi/luigi.glb").to_vec();
     if let Some(rec) = &vis_stream {
         rec.log_static("/", &rerun::ViewCoordinates::FLU()).unwrap();
         rec.log_static(
@@ -140,11 +140,9 @@ pub fn dump_n_visualize(
         .unwrap();
         rec.log_static(
             "/ego",
-            &rerun::Transform3D::from_translation_rotation_scale(
-                rerun::Vec3D::from([-0.35, 0.0, -0.8]),
-                rerun::Quaternion::from_xyzw([0.5, 0.5, 0.5, 0.5]),
-                rerun::Scale3D::from(0.3),
-            ),
+            &rerun::Transform3D::from_rotation(rerun::Quaternion::from_xyzw([
+                0.7071068, 0.0, 0.0, 0.7071068,
+            ])),
         )
         .unwrap();
     }
