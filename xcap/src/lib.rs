@@ -129,8 +129,12 @@ pub fn dump_n_visualize(
     time_stop: i64,
     bars: MultiProgress,
 ) -> Result<(), Error> {
-    // Visualization setup, Ego content from disk file
-    let ego = include_bytes!("../assets/luigi/luigi.glb").to_vec();
+    // Visualization setup, Randomly select a model.
+    let ego = [
+        include_bytes!("../assets/luigi/luigi.glb").to_vec(),
+        include_bytes!("../assets/british-campact-car/car.glb").to_vec(),
+    ][(rand::random::<u8>() % 2) as usize]
+        .clone();
     if let Some(rec) = &vis_stream {
         rec.log_static("/", &rerun::ViewCoordinates::FLU()).unwrap();
         rec.log_static(
