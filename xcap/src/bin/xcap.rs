@@ -20,8 +20,8 @@ struct Args {
 enum Commands {
     /// Visualize ROS messages from MCAP files.
     Show {
-        /// Input resource. Could be a MCAP file, a local directory or a remote S3 URL.
-        input: String,
+        /// Input resources. Could be MCAP files, a local directory or a remote S3 URL.
+        input: Vec<String>,
 
         /// Topics to be visualized, separated by space. Example: "/topic /another/topic /yet/another/topic"
         #[arg(long, value_delimiter = ' ', num_args = 1..)]
@@ -50,8 +50,8 @@ enum Commands {
 
     /// Extract ROS messages from MCAP files.
     Extract {
-        /// Input resource. Could be a local directory or a remote S3 URL.
-        input: String,
+        /// Input resources. Could be MCAP files, a local directory or a remote S3 URL.
+        input: Vec<String>,
 
         /// Output directory path.
         #[arg(short, long)]
@@ -88,8 +88,8 @@ enum Commands {
 
     /// Trim MCAP files.
     Trim {
-        /// Input resource. Could be a local directory or a remote S3 URL.
-        input: String,
+        /// Input resources. Could be MCAP files, a local directory or a remote S3 URL.
+        input: Vec<String>,
 
         /// Output directory path.
         #[arg(short, long)]
@@ -107,116 +107,118 @@ enum Commands {
 
 /// Prepare inputs. Download from remote server if necessary.
 async fn prepare_inputs(
-    source: &str,
+    source: &Vec<String>,
     download_path: &mut Option<PathBuf>,
     sigint: &Arc<AtomicBool>,
 ) -> Result<Vec<PathBuf>, RuntimeError> {
     // Safety first
-    let mut input_src = source.to_owned();
-    if input_src.is_empty() {
+    if source.is_empty() {
         return Err(RuntimeError("Input source is empty.".to_string()));
     }
 
-    // Download from remote server?
-    if input_src.starts_with("http") {
-        let valid_url =
-            Url::parse(&input_src).map_err(|e| RuntimeError(format!("Invalid URL. {}", e)))?;
+    // All the mcap files to be processed.
+    let mut mcap_files: Vec<PathBuf> = Vec::new();
 
-        let base_url = format!(
-            "{}://{}:{}",
-            valid_url.scheme(),
-            valid_url
-                .host_str()
-                .ok_or(RuntimeError("URL host is None.".to_string()))?,
-            valid_url
-                .port()
-                .ok_or(RuntimeError("URL port is None.".to_string()))?,
-        );
-        let bucket = valid_url
-            .path_segments()
-            .ok_or(RuntimeError("Invalid URL path.".to_string()))?
-            .next()
-            .ok_or(RuntimeError("Failed to get bucket name.".to_string()))?;
-        let obj_name = valid_url
-            .path_segments()
-            .unwrap()
-            .next_back()
-            .ok_or(RuntimeError("Failed to get object name.".to_string()))?;
-        let object_dir = valid_url
-            .path()
-            .trim_start_matches('/')
-            .trim_start_matches(bucket)
-            .trim_start_matches('/')
-            .trim_end_matches(obj_name)
-            .trim_end_matches('/');
+    for src_str in source {
+        let mut temp_download_path: Option<PathBuf> = None;
 
-        let region = env::var("S3_REGION")
-            .map_err(|_| RuntimeError("Environment variable `S3_REGION` not set.".to_string()))?;
-        let access_key = env::var("S3_ACCESS_KEY").map_err(|_| {
-            RuntimeError("Environment variable `S3_ACCESS_KEY` not set.".to_string())
-        })?;
-        let secret_key = env::var("S3_SECRET_KEY").map_err(|_| {
-            RuntimeError("Environment variable `S3_SECRET_KEY` not set.".to_string())
-        })?;
-        let storage = Agent::new(&base_url, &region, &access_key, &secret_key)
-            .map_err(|e| RuntimeError(format!("Storage init failed. {}", e)))?;
+        // Download from remote server?
+        if src_str.starts_with("http") {
+            let valid_url =
+                Url::parse(&src_str).map_err(|e| RuntimeError(format!("Invalid URL. {}", e)))?;
 
-        const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-        const STR_LEN: usize = 6;
-        let mut rng = rand::rng();
-        let rand_str: String = (0..STR_LEN)
-            .map(|_| {
-                let idx = rng.random_range(0..CHARSET.len());
-                CHARSET[idx] as char
-            })
-            .collect();
-        let _down_path = PathBuf::from(format!("/tmp/{}-{}", bucket, rand_str));
-        std::fs::create_dir_all(&_down_path).map_err(|e| {
-            RuntimeError(format!(
-                "Failed to create download directory: {}, {}",
-                _down_path.display(),
-                e
-            ))
-        })?;
-        download_path.clone_from(&Some(_down_path.clone()));
+            let base_url = format!(
+                "{}://{}:{}",
+                valid_url.scheme(),
+                valid_url
+                    .host_str()
+                    .ok_or(RuntimeError("URL host is None.".to_string()))?,
+                valid_url
+                    .port()
+                    .ok_or(RuntimeError("URL port is None.".to_string()))?,
+            );
+            let bucket = valid_url
+                .path_segments()
+                .ok_or(RuntimeError("Invalid URL path.".to_string()))?
+                .next()
+                .ok_or(RuntimeError("Failed to get bucket name.".to_string()))?;
+            let obj_name = valid_url
+                .path_segments()
+                .unwrap()
+                .next_back()
+                .ok_or(RuntimeError("Failed to get object name.".to_string()))?;
+            let object_dir = valid_url
+                .path()
+                .trim_start_matches('/')
+                .trim_start_matches(bucket)
+                .trim_start_matches('/')
+                .trim_end_matches(obj_name)
+                .trim_end_matches('/');
 
-        println!("Downloading from bucket: {}", bucket);
-        storage
-            .download_dir(bucket, object_dir, &_down_path, sigint)
-            .await
-            .map_err(|e| RuntimeError(format!("Download failed. {}", e)))?;
+            let region = env::var("S3_REGION").map_err(|_| {
+                RuntimeError("Environment variable `S3_REGION` not set.".to_string())
+            })?;
+            let access_key = env::var("S3_ACCESS_KEY").map_err(|_| {
+                RuntimeError("Environment variable `S3_ACCESS_KEY` not set.".to_string())
+            })?;
+            let secret_key = env::var("S3_SECRET_KEY").map_err(|_| {
+                RuntimeError("Environment variable `S3_SECRET_KEY` not set.".to_string())
+            })?;
+            let storage = Agent::new(&base_url, &region, &access_key, &secret_key)
+                .map_err(|e| RuntimeError(format!("Storage init failed. {}", e)))?;
 
-        input_src = _down_path
-            .to_str()
-            .ok_or(RuntimeError(format!(
-                "Get OS string failed. {}",
-                _down_path.display()
-            )))?
-            .to_string();
-    } else {
-        input_src = source.to_owned();
+            const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+            const STR_LEN: usize = 6;
+            let mut rng = rand::rng();
+            let rand_str: String = (0..STR_LEN)
+                .map(|_| {
+                    let idx = rng.random_range(0..CHARSET.len());
+                    CHARSET[idx] as char
+                })
+                .collect();
+            let _down_path = PathBuf::from(format!("/tmp/{}-{}", bucket, rand_str));
+            std::fs::create_dir_all(&_down_path).map_err(|e| {
+                RuntimeError(format!(
+                    "Failed to create download directory: {}, {}",
+                    _down_path.display(),
+                    e
+                ))
+            })?;
+            download_path.clone_from(&Some(_down_path.clone()));
+
+            println!("Downloading from bucket: {}", bucket);
+            storage
+                .download_dir(bucket, object_dir, &_down_path, sigint)
+                .await
+                .map_err(|e| RuntimeError(format!("Download failed. {}", e)))?;
+            temp_download_path = Some(_down_path);
+        }
+
+        let input_path = temp_download_path.or(Some(PathBuf::from(src_str))).unwrap();
+
+        // Input is a file?
+        if input_path.is_file() {
+            if !input_path.exists() {
+                return Err(RuntimeError(format!(
+                    "Input source not found: {}",
+                    input_path.display()
+                )));
+            }
+            mcap_files.push(input_path.clone());
+        }
+
+        // Input is a directory?
+        if input_path.is_dir() {
+            let files: Vec<PathBuf> = fs::read_dir(&input_path)
+                .map_err(|e| RuntimeError(format!("Failed to read directory: {}", e)))?
+                .map(|f| f.unwrap().path())
+                .filter(|f| f.is_file() && f.extension().is_some_and(|f| f.eq("mcap")))
+                .collect();
+            mcap_files.extend(files);
+        }
     }
-
-    let input_path = PathBuf::from(input_src);
-    if !input_path.exists() {
-        return Err(RuntimeError(format!(
-            "Input source not found: {}",
-            input_path.display()
-        )));
-    }
-
-    // Find all MCAP files
-    if input_path.is_file() {
-        return Ok(vec![input_path]);
-    }
-    let mut files: Vec<PathBuf> = fs::read_dir(&input_path)
-        .map_err(|e| RuntimeError(format!("Failed to read directory: {}", e)))?
-        .map(|f| f.unwrap().path())
-        .filter(|f| f.is_file() && f.extension().is_some_and(|f| f.eq("mcap")))
-        .collect();
-    files.sort();
-
-    Ok(files)
+    mcap_files.sort();
+    Ok(mcap_files)
 }
 
 fn cleanup(local_path: &Option<PathBuf>) {
@@ -447,7 +449,7 @@ async fn main() {
         Err(xcap::Error::Interrupted) => print!("Interrupted"),
         Err(e) => {
             println!("{}", e);
-            print!("Sorry, job failed.");
+            println!("Sorry, job failed.");
         }
     }
 }
