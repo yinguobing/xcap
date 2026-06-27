@@ -1,10 +1,11 @@
 use clap::{Parser, Subcommand};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rand::Rng;
+
 use std::sync::atomic::AtomicBool;
 use std::{env, fs, path::PathBuf, sync::Arc};
 use url::Url;
-use xcap::{dump_n_visualize, storage::Agent, summary, trim};
+use xcap::{dump_n_visualize, storage::Agent, summary, textlog, trim};
 
 struct RuntimeError(String);
 
@@ -35,13 +36,21 @@ enum Commands {
         #[arg(long)]
         intensity_scale: Option<f32>,
 
-        /// Set the start time offset in UTC.
-        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
-        time_off: String,
+        /// H264 header bytes. Populate this if H264 header is missing.
+        #[arg(long)]
+        video_header: Option<String>,
 
-        /// Set the stop time `YEAR-MONTH-DAY HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+        /// Only include message after this time. Accept RFC3339-formatted datetime. Example: "2025-10-01 10:00:00.010+08:00"
+        #[arg(long)]
+        time_off: Option<String>,
+
+        /// Only include message before this time. Accept RFC3339-formatted datetime. Example: "2025-10-01 10:01:10.110+08:00"
         #[arg(long)]
         time_stop: Option<String>,
+
+        /// Text log file to be logged.
+        #[arg(long, value_delimiter = ' ', num_args = 1..)]
+        log_files: Option<Vec<String>>,
 
         /// Rerun viewer URL.
         #[arg(long)]
@@ -69,11 +78,11 @@ enum Commands {
         #[arg(long)]
         intensity_scale: Option<f32>,
 
-        /// Set the start time offset `HH:MM:SS` in UTC. Default: 00:00:00.
-        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
-        time_off: String,
+        /// Only include message after this time. Accept RFC3339-formatted datetime. Example: "2025-10-01 10:00:00.010+08:00"
+        #[arg(long)]
+        time_off: Option<String>,
 
-        /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+        /// Only include message before this time. Accept RFC3339-formatted datetime. Example: "2025-10-01 10:01:10.110+08:00"
         #[arg(long)]
         time_stop: Option<String>,
 
@@ -81,9 +90,21 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         preview: bool,
 
+        /// H264 header bytes. Populate this if H264 header is missing.
+        #[arg(long)]
+        video_header: Option<String>,
+
+        /// Dump the data as raw binary files.
+        #[arg(long, default_value_t = false)]
+        as_binary: bool,
+
         /// Rerun viewer URL.
         #[arg(long)]
         viewer_url: Option<String>,
+
+        /// The format of the dumped image from video clips. Default: jpeg
+        #[arg(long)]
+        video_frame_format: Option<String>,
     },
 
     /// Trim MCAP files.
@@ -95,11 +116,11 @@ enum Commands {
         #[arg(short, long)]
         output_dir: PathBuf,
 
-        /// Set the start time offset `HH:MM:SS` in UTC. Default: 00:00:00.
-        #[arg(long, default_value_t = String::from("1970-1-1 00:00:00"))]
-        time_off: String,
+        /// Only include message after this time. Accept RFC3339-formatted datetime. Example: "2025-10-01 10:00:00.010+08:00"
+        #[arg(long)]
+        time_off: Option<String>,
 
-        /// Set the stop time `HH:MM:SS` in UTC. The decoding process will reatch to the end of the file if not specified.
+        /// Only include message before this time. Accept RFC3339-formatted datetime. Example: "2025-10-01 10:01:10.110+08:00"
         #[arg(long)]
         time_stop: Option<String>,
     },
@@ -125,7 +146,7 @@ async fn prepare_inputs(
         // Download from remote server?
         if src_str.starts_with("http") {
             let valid_url =
-                Url::parse(&src_str).map_err(|e| RuntimeError(format!("Invalid URL. {}", e)))?;
+                Url::parse(src_str).map_err(|e| RuntimeError(format!("Invalid URL. {}", e)))?;
 
             let base_url = format!(
                 "{}://{}:{}",
@@ -194,7 +215,7 @@ async fn prepare_inputs(
             temp_download_path = Some(_down_path);
         }
 
-        let input_path = temp_download_path.or(Some(PathBuf::from(src_str))).unwrap();
+        let input_path = temp_download_path.unwrap_or(PathBuf::from(src_str));
 
         // Input is a file?
         if input_path.is_file() {
@@ -251,11 +272,17 @@ fn make_rerun_stream() -> (
 
 #[tokio::main]
 async fn main() {
+    // Progress bar setup
+    let bars = MultiProgress::new();
+
     // Logger setup
     let logger =
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error"))
             .build();
     let level = logger.filter();
+    indicatif_log_bridge::LogWrapper::new(bars.clone(), logger)
+        .try_init()
+        .unwrap();
     log::set_max_level(level);
 
     // Catch SIGINT
@@ -334,7 +361,8 @@ async fn main() {
 
     // Notice user about the output directory
     let output_dir = match &args.command {
-        Commands::Extract { output_dir, .. } | Commands::Trim { output_dir, .. } => {
+        Commands::Extract { output_dir, .. }
+        | Commands::Trim { output_dir, .. } => {
             println!("Output directory: {}", output_dir.display());
             Some(output_dir.clone())
         }
@@ -359,28 +387,57 @@ async fn main() {
             ..
         } => (time_off, time_stop),
     };
-    let time_off = match chrono::NaiveDateTime::parse_from_str(time_off, "%Y-%m-%d %H:%M:%S") {
-        Ok(t) => t.and_utc().timestamp_nanos_opt().unwrap(),
-        Err(e) => {
-            println!("Parse start time failed, {}", e);
-            cleanup(&download_path);
-            return;
+    let time_off_str = if time_off.is_none() {
+        "START".to_string()
+    } else {
+        time_off.as_ref().unwrap().to_string()
+    };
+    let time_stop_str = if time_stop.is_none() {
+        "END".to_string()
+    } else {
+        time_stop.as_ref().unwrap().to_string()
+    };
+    println!("Time range: from {} to {}", time_off_str, time_stop_str);
+
+    let time_off = if time_off.is_none() {
+        i64::MIN
+    } else {
+        match chrono::DateTime::parse_from_rfc3339(time_off.as_ref().unwrap()) {
+            Ok(t) => t.to_utc().timestamp_nanos_opt().unwrap(),
+            Err(e) => {
+                println!("Parse start time failed, {}", e);
+                cleanup(&download_path);
+                return;
+            }
         }
     };
     let time_stop = if time_stop.is_none() {
         i64::MAX
     } else {
-        match chrono::NaiveDateTime::parse_from_str(
-            time_stop.as_ref().unwrap(),
-            "%Y-%m-%d %H:%M:%S",
-        ) {
-            Ok(t) => t.and_utc().timestamp_nanos_opt().unwrap(),
+        match chrono::DateTime::parse_from_rfc3339(time_stop.as_ref().unwrap()) {
+            Ok(t) => t.to_utc().timestamp_nanos_opt().unwrap(),
             Err(e) => {
                 println!("Parse stop time failed, {}", e);
                 cleanup(&download_path);
                 return;
             }
         }
+    };
+
+    // Manualy override the video codec header
+    let video_header = match &args.command {
+        Commands::Show { video_header, .. }
+        | Commands::Extract { video_header, .. } => video_header.as_ref().and_then(|p| {
+            println!("Using custom video codec header from {}", p);
+            video_header.clone()
+        }),
+        _ => None,
+    };
+
+    // Dump as binary?
+    let as_binary = match &args.command {
+        Commands::Extract { as_binary, .. } => *as_binary,
+        _ => false,
     };
 
     // Visualize required?
@@ -392,11 +449,42 @@ async fn main() {
         _ => (None, None),
     };
 
-    // Progress bar setup
-    let bars = MultiProgress::new();
-    indicatif_log_bridge::LogWrapper::new(bars.clone(), logger)
-        .try_init()
-        .unwrap();
+    // Text log file logging?
+    if let Some(text_logs) = match &args.command {
+        Commands::Show { log_files, .. } => log_files.clone(),
+        _ => None,
+    } {
+        println!("Log files: {}", text_logs.len());
+        let log_pathbufs: Vec<PathBuf> = text_logs.iter().map(PathBuf::from).collect();
+        for pb in log_pathbufs.iter() {
+            if !pb.exists() || !pb.is_file() {
+                println!(
+                    "Log file not found, or is not a text file: {}",
+                    pb.display()
+                );
+                return;
+            }
+            println!("- {}", pb.display());
+        }
+
+        let log_parser = textlog::Parser::new(vis_stream.clone(), &log_pathbufs);
+        match log_parser.parse(sigint.clone()) {
+            Ok(_) => {}
+            Err(e) => {
+                println!("{}", e);
+                return;
+            }
+        }
+    }
+
+    let output_image_format = match &args.command {
+        Commands::Extract {
+            video_frame_format, ..
+        } => video_frame_format,
+        _ => &None,
+    };
+
+    // Progress spinner
     let bar_style = ProgressStyle::with_template("{spinner} {msg}").unwrap();
     let bar = ProgressBar::new_spinner()
         .with_message("Processing...")
@@ -418,6 +506,7 @@ async fn main() {
         } => dump_n_visualize(
             &files,
             &output_dir,
+            as_binary,
             &target_topics,
             sigint,
             vis_stream,
@@ -426,6 +515,8 @@ async fn main() {
             &topics_in_mcap,
             time_off,
             time_stop,
+            &video_header,
+            output_image_format,
             bars,
         ),
         Commands::Trim { output_dir, .. } => trim(&files, &output_dir, sigint, time_off, time_stop),
@@ -446,7 +537,7 @@ async fn main() {
     // Take aways
     match ret {
         Ok(_) => println!("Done."),
-        Err(xcap::Error::Interrupted) => print!("Interrupted"),
+        Err(xcap::Error::Interrupted) => println!("Interrupted"),
         Err(e) => {
             println!("{}", e);
             println!("Sorry, job failed.");

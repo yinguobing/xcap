@@ -2,20 +2,39 @@
 Single binary to extract ROS messages from MCAP files.
 
 ## Features
-- Supported messages: `Image`, `CompressedImage`, `PointCloud2`
 - Support sliced MCAP files
 - Visualization with Rerun
 - Support MinIO as input source
 
-## Installation
-Download the latest release from the [releases page](https://github.com/yinguobing/xcap/releases).
+## Usage
+Xcap supports MCAP file extracting, trimming and visualization.
 
 Install using `dpkg`:
 ```bash
 sudo dpkg -i xcap_<version>_amd64.deb
 ```
 
-**Optional** Install Rerun viewer if you need realtime visualization:
+Extract from a MinIO bucket:
+```bash
+export S3_ACCESS_KEY="YOUR_KEY"
+export S3_SECRET_KEY="YOUR_SECRET"
+export S3_REGION="YOUR_REGION"
+xcap extract -i "http://your_minio:port/bucket_name/path/to/one_of_the_mcap_file.mcap" -o /path/to/output --topics="/lidar,/image"
+```
+
+In case you want to preview the content during extracing, use `--preview` flag:
+```bash
+xcap extract -i /path/to/mcap/dir -o /path/to/output --topics="/lidar" --preview
+```
+
+### Trim
+Trim the mcap file.
+```bash
+xcap trim -i /path/to/mcap/dir --time-off "2024-12-05 09:50:20" --time-stop "2024-12-05 09:50:25"
+```
+
+### Visualize
+A [Rerun](https://rerun.io/) viewer is required to visualize the data. Install it first:
 ```bash
 # install with
 cargo install rerun-cli

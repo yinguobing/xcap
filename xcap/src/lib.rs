@@ -1,15 +1,22 @@
 use crate::extractor::Extractor;
-use crate::parser::{compressed_image, image, pointcloud, timestamp};
+use crate::parser::{h264, image, odom, pointcloud, timestamp, trailing};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use log::{error, info, warn};
-use std::path::Path;
-use std::sync::{atomic::AtomicBool, Arc};
-use std::{collections::HashMap, fs, io, path::PathBuf};
+use log::{debug, info, warn};
+
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 mod extractor;
 mod parser;
 pub mod storage;
-mod visual;
+pub mod textlog;
+
+const GROUND_OFFSET: f32 = 0.0;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -26,7 +33,7 @@ pub enum Error {
     #[error("Interrupted")]
     Interrupted,
     #[error("H.264 error. {0}")]
-    H264Error(#[from] compressed_image::Error),
+    H264Error(#[from] h264::Error),
     #[error("Failed to parse message. {0}")]
     ParserError(String),
     #[error("unknown error")]
@@ -48,8 +55,8 @@ impl std::fmt::Display for Topic {
             "[{}] {} msgs: {}, {}, {}",
             self.id,
             self.name,
-            if self.msg_count.is_some() {
-                self.msg_count.unwrap().to_string()
+            if let Some(count) = self.msg_count {
+                count.to_string()
             } else {
                 "Unknown".to_owned()
             },
@@ -59,7 +66,7 @@ impl std::fmt::Display for Topic {
     }
 }
 
-pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
+pub fn summary(files: &[PathBuf]) -> Result<Vec<Topic>, Error> {
     // Collect all topics
     let mut topics: HashMap<String, Topic> = HashMap::new();
 
@@ -83,6 +90,7 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
 
         // Topics
         for chn in summary.channels {
+            debug!("Channel: {}, {:?}", chn.1.message_encoding, chn.1.metadata);
             topics
                 .entry(chn.1.topic.clone())
                 .and_modify(|t| {
@@ -91,13 +99,10 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
                     t.format.clone_from(&chn.1.schema.as_ref().unwrap().name);
                     t.description =
                         format!("Encoding: {}", chn.1.schema.as_ref().unwrap().encoding);
-                    t.msg_count = if t.msg_count.is_some()
-                        && stats.channel_message_counts.contains_key(&chn.0)
+                    t.msg_count = if let (Some(count), Some(delta)) =
+                        (t.msg_count, stats.channel_message_counts.get(&chn.0))
                     {
-                        Some(
-                            t.msg_count.unwrap()
-                                + stats.channel_message_counts.get(&chn.0).unwrap(),
-                        )
+                        Some(count + delta)
                     } else {
                         None
                     };
@@ -106,7 +111,11 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
                     id: chn.0,
                     name: chn.1.topic.clone(),
                     format: chn.1.schema.as_ref().unwrap().name.clone(),
-                    description: format!("Encoding: {}", chn.1.schema.as_ref().unwrap().encoding),
+                    description: format!(
+                        "id: {}, encoding: {}",
+                        chn.1.schema.as_ref().unwrap().id,
+                        chn.1.schema.as_ref().unwrap().encoding
+                    ),
                     msg_count: stats.channel_message_counts.get(&chn.0).copied(),
                 });
         }
@@ -116,9 +125,11 @@ pub fn summary(files: &Vec<PathBuf>) -> Result<Vec<Topic>, Error> {
     Ok(topics)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn dump_n_visualize(
     files: &[PathBuf],
     output_dir: &Option<PathBuf>,
+    as_binary: bool,
     target_topics: &[String],
     sigint: Arc<AtomicBool>,
     vis_stream: Option<rerun::RecordingStream>,
@@ -127,6 +138,8 @@ pub fn dump_n_visualize(
     topics_in_mcap: &[Topic],
     time_off: i64,
     time_stop: i64,
+    video_header: &Option<String>,
+    output_image_format: &Option<String>,
     bars: MultiProgress,
 ) -> Result<(), Error> {
     // Visualization setup, Randomly select a model.
@@ -135,17 +148,27 @@ pub fn dump_n_visualize(
         include_bytes!("../assets/british-campact-car/car.glb").to_vec(),
     ][(rand::random::<u8>() % 2) as usize]
         .clone();
+
+    // A flag asset for trailing target visualization
+    let flag = include_bytes!("../assets/map-pin/pin.glb").to_vec();
     if let Some(rec) = &vis_stream {
-        rec.log_static("/", &rerun::ViewCoordinates::FLU()).unwrap();
+        // Setup view coordinates
+        rec.log_static("world", &rerun::ViewCoordinates::FLU())
+            .unwrap();
+
+        // Setup EGO model
         rec.log_static(
-            "/ego",
+            "world/ego/vehicle",
             &rerun::Asset3D::from_file_contents(ego, Some(rerun::MediaType::glb())),
         )
         .unwrap();
         rec.log_static(
-            "/ego",
+            "world/ego/vehicle",
             &rerun::Transform3D::from_rotation(rerun::Quaternion::from_xyzw([
-                0.7071068, 0.0, 0.0, 0.7071068,
+                std::f32::consts::FRAC_1_SQRT_2,
+                0.0,
+                0.0,
+                std::f32::consts::FRAC_1_SQRT_2,
             ])),
         )
         .unwrap();
@@ -165,47 +188,88 @@ pub fn dump_n_visualize(
         &str,
         Box<dyn Extractor<ExtractorError = Box<dyn std::error::Error>>>,
     > = HashMap::new();
-    for topic_name in target_topics.iter() {
-        // Find the topic with this name
+    for topic_name in target_topics {
+        // Locate corresponding topic
         let topic = topics_in_mcap
             .iter()
             .find(|&t| &t.name == topic_name)
             .ok_or(Error::InvalidTopic(topic_name.clone()))?;
 
-        // Output dir
-        let out_dir = output_dir
+        // Using topic name as output directory path
+        let output_dir = output_dir
             .as_ref()
-            .map(|p| p.join(topic_name.trim_start_matches("/")));
+            .map(|p| p.join(PathBuf::from(topic_name.trim_start_matches('/'))));
 
         // Create parser by topic format
         match topic.format.as_str() {
             "builtin_interfaces/msg/Time" => {
                 parsers.insert(
-                    topic_name,
+                    topic.name.as_str(),
                     Box::new(timestamp::Parser::new(vis_stream.clone())),
                 );
             }
             "sensor_msgs/msg/Image" => {
                 parsers.insert(
-                    topic_name,
-                    Box::new(image::Parser::new(&out_dir, vis_stream.clone())),
+                    topic.name.as_str(),
+                    Box::new(image::Parser::new(&output_dir, vis_stream.clone())),
                 );
             }
-            "sensor_msgs/msg/CompressedImage" => {
+            "custom_msgs/msg/CompressedImage" => {
                 parsers.insert(
-                    topic_name,
-                    Box::new(compressed_image::Parser::new(&out_dir, vis_stream.clone())),
+                    topic.name.as_str(),
+                    Box::new(h264::Parser::new(
+                        &output_dir,
+                        vis_stream.clone(),
+                        as_binary,
+                        video_header,
+                        output_image_format,
+                    )),
                 );
             }
             "sensor_msgs/msg/PointCloud2" => {
                 parsers.insert(
                     topic_name,
                     Box::new(pointcloud::Parser::new(
-                        &out_dir,
-                        vis_stream.clone(),
+                        &output_dir,
+                        &vis_stream,
                         point_cloud_scale,
                         intensity_scale,
+                        &as_binary,
                     )),
+                );
+            }
+            "geometry_msgs/msg/PointStamped" => {
+                parsers.insert(
+                    topic.name.as_str(),
+                    Box::new(trailing::Parser::new(&output_dir, &vis_stream)),
+                );
+                if let Some(rec) = &vis_stream {
+                    // Show the target marker
+                    rec.log_static(
+                        topic.name.as_str(),
+                        &rerun::Asset3D::from_file_contents(
+                            flag.clone(),
+                            Some(rerun::MediaType::glb()),
+                        ),
+                    )
+                    .unwrap();
+                    // Show the attention zone
+                    rec.log_static(
+                        "trailing/attention_zone",
+                        &rerun::Boxes3D::from_centers_and_half_sizes(
+                            [(2.8, 0.0, -GROUND_OFFSET)],
+                            [(2.35, 5.0, 0.01)],
+                        )
+                        .with_radii([0.01])
+                        .with_colors([rerun::Color::from_rgb(0, 125, 255)]),
+                    )
+                    .unwrap();
+                }
+            }
+            "nav_msgs/msg/Odometry" => {
+                parsers.insert(
+                    topic_name.as_str(),
+                    Box::new(odom::Parser::new(&output_dir, vis_stream.clone())),
                 );
             }
             _ => {
@@ -227,9 +291,14 @@ pub fn dump_n_visualize(
         );
     }
 
+    // Setup progress bars
     for h in bar_handles.values_mut() {
         h.set_style(sty.clone());
     }
+
+    // Setup blueprints TODO.
+    let _enable_3d_view = parsers.iter().any(|p| p.1.generates_3d_data());
+    let _enable_2d_view = parsers.iter().any(|p| p.1.generates_2d_data());
 
     // Enumerate all files
     'loop_file: for file in files.iter() {
@@ -247,10 +316,10 @@ pub fn dump_n_visualize(
             let msg = message?;
 
             // Trim start/end
-            if msg.publish_time < time_off as u64 {
+            if (msg.publish_time as i64) <= time_off {
                 continue;
             }
-            if msg.publish_time > time_stop as u64 {
+            if (msg.publish_time as i64) >= time_stop {
                 info!("Stop time reached");
                 break 'loop_file;
             }
@@ -322,4 +391,57 @@ pub fn trim(
     trim_out.finish()?;
 
     Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn topic_display_with_msg_count() {
+        let topic = Topic {
+            id: 42,
+            name: "/camera/image".to_string(),
+            format: "sensor_msgs/msg/Image".to_string(),
+            description: "id: 1, encoding: cdr".to_string(),
+            msg_count: Some(100),
+        };
+        let display = format!("{}", topic);
+        assert!(display.contains("42"));
+        assert!(display.contains("/camera/image"));
+        assert!(display.contains("100"));
+        assert!(display.contains("sensor_msgs/msg/Image"));
+    }
+
+    #[test]
+    fn topic_display_without_msg_count() {
+        let topic = Topic {
+            id: 1,
+            name: "/odom".to_string(),
+            format: "nav_msgs/msg/Odometry".to_string(),
+            description: "id: 2, encoding: cdr".to_string(),
+            msg_count: None,
+        };
+        let display = format!("{}", topic);
+        assert!(display.contains("1"));
+        assert!(display.contains("/odom"));
+        assert!(display.contains("Unknown"));
+    }
+
+    #[test]
+    fn error_display() {
+        let err = Error::InvalidTopic("test_topic".to_string());
+        assert_eq!(format!("{}", err), "Invalid topic. test_topic");
+
+        let err = Error::Interrupted;
+        assert_eq!(format!("{}", err), "Interrupted");
+
+        let err = Error::Unknown;
+        assert_eq!(format!("{}", err), "unknown error");
+
+        let err = Error::NoSummary("file.mcap".to_string());
+        assert!(format!("{}", err).contains("file.mcap"));
+
+        let err = Error::ParserError("bad data".to_string());
+        assert!(format!("{}", err).contains("bad data"));
+    }
 }

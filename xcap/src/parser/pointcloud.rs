@@ -1,3 +1,4 @@
+#![allow(clippy::upper_case_acronyms)]
 use crate::extractor::Extractor;
 use colorgrad::Gradient;
 use mcap::Message;
@@ -18,10 +19,10 @@ pub enum Error {
     #[error("ZSTD error. {0}")]
     Zstd(#[from] std::io::Error),
     #[error("CDR error. {0}")]
-    Cdr(#[from] cdr::Error),
+    CDR(#[from] cdr::Error),
 }
 
-pub struct Parser {
+pub struct Parser<'a> {
     // Output directory
     output_dir: Option<PathBuf>,
 
@@ -37,23 +38,45 @@ pub struct Parser {
 
     // Color map. Map point cloud intensity to a color.
     color_map: colorgrad::LinearGradient,
+
+    // Should dump the raw binary data
+    as_binary: &'a bool,
+
+    // PCD schema
+    pcd_schema: Option<Schema>,
+
+    // Output file suffix
+    suffix: &'a str,
 }
 
-impl Parser {
+impl<'a> Parser<'a> {
     pub fn new(
         output_path: &Option<PathBuf>,
-        rerun_stream: Option<RecordingStream>,
+        rerun_stream: &Option<RecordingStream>,
         spatial_scale: &Option<f32>,
         intensity_scale: &Option<f32>,
+        as_binary: &'a bool,
     ) -> Self {
         // Create output dir
-        if let Some(output_dir) = output_path {
-            fs::create_dir_all(output_dir).unwrap();
+        if let Some(output_path) = output_path {
+            fs::create_dir_all(output_path).unwrap();
         }
+
+        let pcd_schema = if *as_binary {
+            None
+        } else {
+            Some(Schema::from_iter(vec![
+                ("x", ValueKind::F32, 1),
+                ("y", ValueKind::F32, 1),
+                ("z", ValueKind::F32, 1),
+                ("intensity", ValueKind::F32, 1),
+            ]))
+        };
+        let suffix = if *as_binary { "bin" } else { "pcd" };
 
         Parser {
             output_dir: output_path.clone(),
-            rec_stream: rerun_stream,
+            rec_stream: rerun_stream.clone(),
             spatial_scale: spatial_scale.unwrap_or(1.0),
             intensity_scale: intensity_scale.unwrap_or(1.0),
             color_map: colorgrad::GradientBuilder::new()
@@ -62,6 +85,9 @@ impl Parser {
                 .mode(colorgrad::BlendMode::LinearRgb)
                 .build::<colorgrad::LinearGradient>()
                 .expect("Color map should be created"),
+            as_binary,
+            pcd_schema,
+            suffix,
         }
     }
 
@@ -105,14 +131,14 @@ impl Parser {
     }
 }
 
-impl Extractor for Parser {
+impl<'a> Extractor for Parser<'a> {
     type ExtractorError = Box<dyn std::error::Error>;
 
     fn step(&mut self, message: &Message) -> Result<(), Self::ExtractorError> {
         let serialized = self.decode(message)?;
         let cloud_msg =
             cdr::deserialize_from::<_, PointCloud2, _>(serialized.as_slice(), cdr::size::Infinite)
-                .map_err(Error::Cdr)?;
+                .map_err(Error::CDR)?;
 
         // Extract points and intensity
         let decoded = self.decode_pointcloud(&cloud_msg);
@@ -131,63 +157,99 @@ impl Extractor for Parser {
             .iter()
             .map(|p| *p as f32 * self.intensity_scale);
 
+        // Timestamp
+        let timestamp =
+            cloud_msg.header.stamp.sec as f64 + cloud_msg.header.stamp.nanosec as f64 * 1e-9;
+
         // Visualize?
         if let Some(rec) = &self.rec_stream {
+            rec.set_time(
+                "ros_publish",
+                rerun::TimeCell::from_timestamp_nanos_since_epoch(message.publish_time as i64),
+            );
+            rec.set_time(
+                "ros_log",
+                rerun::TimeCell::from_timestamp_nanos_since_epoch(message.log_time as i64),
+            );
+            rec.set_time(
+                "ros_idx",
+                rerun::TimeCell::from_sequence(message.sequence as i64),
+            );
+            rec.set_timestamp_secs_since_epoch("msg_header", timestamp);
+
+            // Latency
+            let ts_message_micros = i64::from(cloud_msg.header.stamp.sec) * 1_000_000
+                + i64::from(cloud_msg.header.stamp.nanosec) / 1000;
+            let ts_publish_micros = message.publish_time as i64 / 1000;
+            rec.log(
+                format!("latency/{}", &message.channel.topic.trim_start_matches("/")),
+                &rerun::Scalars::single((ts_publish_micros - ts_message_micros) as f64 * 0.001),
+            )?;
+
             let colors = intensity.clone().map(|i| {
                 let [r, g, b, a] = self.color_map.at(i).to_rgba8();
                 rerun::Color::from_unmultiplied_rgba(r, g, b, a)
             });
-            rec.set_timestamp_secs_since_epoch(
-                "main",
-                cloud_msg.header.stamp.sec as f64 + cloud_msg.header.stamp.nanosec as f64 * 1e-9,
-            );
-            rec.log(
-                message.channel.topic.clone(),
-                &rerun::Points3D::new(points.clone())
-                    .with_colors(colors)
-                    .with_radii([0.01]),
-            )?;
+            let mut point_groups: HashMap<i16, (Vec<rerun::Position3D>, Vec<rerun::Color>)> =
+                HashMap::new();
+            let default_sensor_id = vec![0.0; points.len()];
+            let sensor_idicies = decoded.get("index").unwrap_or(&default_sensor_id);
+            for ((p, i), c) in points.clone().zip(sensor_idicies).zip(colors) {
+                point_groups
+                    .entry(*i as i16)
+                    .and_modify(|v| {
+                        v.0.push(p);
+                        v.1.push(c)
+                    })
+                    .or_insert((vec![], vec![]));
+            }
+            for (sensor_idx, (ps, cs)) in point_groups {
+                rec.log(
+                    format!(
+                        "world/ego/{}/{}",
+                        &message.channel.topic.trim_start_matches("/"),
+                        sensor_idx
+                    ),
+                    &rerun::Points3D::new(ps).with_colors(cs).with_radii([0.01]),
+                )?;
+            }
         }
 
         // Create output file
         if let Some(output_dir) = &self.output_dir {
-            // Output binary file
-            let mut output_file = output_dir.join(format!("{}.bin", message.publish_time));
-            let mut file = fs::File::create(&output_file)?;
-            file.write_all(&cloud_msg.data)?;
+            // Output file
+            let timestamp_as_str = format!("{}", (timestamp * 1000.0) as u64);
+            let output_path = output_dir.join(format!("{}.{}", timestamp_as_str, self.suffix));
 
-            // Output PCD file
-            let schema = vec![
-                ("x", ValueKind::F32, 1),
-                ("y", ValueKind::F32, 1),
-                ("z", ValueKind::F32, 1),
-                ("intensity", ValueKind::F32, 1),
-            ];
+            // binary file?
+            if *self.as_binary {
+                let mut file = fs::File::create(&output_path)?;
+                file.write_all(&cloud_msg.data)?;
+            } else {
+                // PCD file
+                let mut writer: DynWriter<_> = WriterInit {
+                    width: cloud_msg.width as u64,
+                    height: cloud_msg.height as u64,
+                    viewpoint: Default::default(),
+                    data_kind: DataKind::Ascii,
+                    schema: self.pcd_schema.clone(),
+                }
+                .create(&output_path)?;
 
-            // Build a writer
-            output_file.set_extension("pcd");
-            let mut writer: DynWriter<_> = WriterInit {
-                width: cloud_msg.width as u64,
-                height: cloud_msg.height as u64,
-                viewpoint: Default::default(),
-                data_kind: DataKind::Ascii,
-                schema: Some(Schema::from_iter(schema)),
+                // Send the points to the writer
+                for (point, itn) in zip(points, intensity) {
+                    let r: DynRecord = DynRecord(vec![
+                        Field::F32(vec![point[0]]),
+                        Field::F32(vec![point[1]]),
+                        Field::F32(vec![point[2]]),
+                        Field::F32(vec![itn]),
+                    ]);
+                    writer.push(&r)?;
+                }
+
+                // Finalize the writer
+                writer.finish()?;
             }
-            .create(&output_file)?;
-
-            // Send the points to the writer
-            for (point, itn) in zip(points, intensity) {
-                let r: DynRecord = DynRecord(vec![
-                    Field::F32(vec![point[0]]),
-                    Field::F32(vec![point[1]]),
-                    Field::F32(vec![point[2]]),
-                    Field::F32(vec![itn]),
-                ]);
-                writer.push(&r)?;
-            }
-
-            // Finalize the writer
-            writer.finish()?;
         }
 
         Ok(())
@@ -195,5 +257,31 @@ impl Extractor for Parser {
 
     fn post_process(&mut self, _sigint: Arc<AtomicBool>) -> Result<(), Self::ExtractorError> {
         Ok(())
+    }
+
+    fn generates_2d_data(&self) -> bool {
+        false
+    }
+
+    fn generates_3d_data(&self) -> bool {
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parser_creation() {
+        let parser = Parser::new(&None, &None, &None, &None, &false);
+        assert!(!parser.generates_2d_data());
+        assert!(parser.generates_3d_data());
+    }
+
+    #[test]
+    fn error_display() {
+        let err = Error::CDR(cdr::Error::Message("test".to_string()));
+        assert!(format!("{}", err).contains("CDR error"));
     }
 }

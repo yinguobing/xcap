@@ -1,41 +1,50 @@
 [package]
 name = "xcap"
 description = "A simple MCAP extractor"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 cdr = "0.2.4"
-clap = { version = "4.5.41", features = ["derive"] }
-mcap = { version = "0.23.1" }
+clap = { version = "4.6.1", features = ["derive"] }
+mcap = { version = "0.23.4" }
 serde = { workspace = true }
 zstd = "0.13.3"
 openh264 = "0.8.1"
-indicatif = { version = "0.18.0", features = ["rayon"] }
-image = "0.25.6"
-thiserror = "2.0.12"
+indicatif = { version = "0.18.4", features = ["rayon"] }
+image = "0.25.10"
+thiserror = "2.0.18"
 env_logger = { workspace = true }
 log = { workspace = true }
 minio = "0.3.0"
-tokio = "1.46.1"
-reqwest = "0.12.22"
-url = "2.5.4"
-rand = "0.9.1"
-ctrlc = "3.4.7"
-rerun = { version = "0.24.1", features = ["native_viewer"] }
+tokio = "1.52.3"
+reqwest = "0.12.28"
+url = "2.5.8"
+rand = "0.9.4"
+ctrlc = "3.5.2"
+rerun = { version = "0.32.2", features = ["native_viewer"] }
 quaternion-core = "0.5.4"
 colorgrad = "0.7.2"
-chrono = "0.4.41"
-memmap2 = "0.9.7"
-bstr = "1.12.0"
-imageproc = "0.25.0"
-libyuv = "1.0.0"
+chrono = "0.4.44"
+memmap2 = "0.9.10"
+bstr = "1.12.1"
+imageproc = "0.25.1"
 pcd-rs = "0.12.0"
+ros2-interfaces-humble = { workspace = true, features = [
+    "sensor_msgs",
+    "nav_msgs",
+    "diagnostic_msgs",
+] }
+
+futures-util = "0.3.32"
+regex = "1.12.3"
 indicatif-log-bridge = "0.2.3"
-ros2-interfaces-humble = { version = "0.0.1", features = ["sensor_msgs"] }
-futures-util = "0.3.31"
+yuv = "0.8.14"
+serde_json = "1.0.150"
+ndarray = "0.17.2"
+ndarray-linalg = { version = "0.18.1", features = ["openblas-static"] }
 
 [features]
 native_viewer = []
@@ -43,7 +52,7 @@ native_viewer = []
 # To package a DEB package
 [package.metadata.deb]
 maintainer = "Yin Guobing <yinguobing@gmail.com>"
-copyright = "2024, Yin Guobing <yinguobing@gmail.com>"
+copyright = "2026, Yin Guobing <yinguobing@gmail.com>"
 license-file = ["LICENSE", "4"]
 extended-description = """\
 A simple MCAP extractor."""

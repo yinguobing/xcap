@@ -13,15 +13,22 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("S3 error: {0}")]
-    S3Error(#[from] minio::s3::error::Error),
-    #[error("Reqwest error: {0}")]
-    RequestError(#[from] reqwest::Error),
+    S3Error(Box<minio::s3::error::Error>),
+
     #[error("Disk IO error: {0}")]
     DiskError(#[from] std::io::Error),
+
     #[error("Not existed: {0}")]
     NotExisted(String),
+
     #[error("unknown error")]
     Unknown,
+}
+
+impl From<minio::s3::error::Error> for Error {
+    fn from(e: minio::s3::error::Error) -> Self {
+        Error::S3Error(Box::new(e))
+    }
 }
 
 #[derive(Debug)]
@@ -79,7 +86,7 @@ impl Agent {
 
                 Err(e) => {
                     error!("List object error.");
-                    return Err(Error::S3Error(e));
+                    return Err(Error::S3Error(Box::new(e)));
                 }
             }
         }
@@ -119,5 +126,23 @@ impl Agent {
         get_object.content.to_file(Path::new(local_path)).await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_display() {
+        let err = Error::NotExisted("bucket".to_string());
+        assert!(format!("{}", err).contains("bucket"));
+
+        let err = Error::Unknown;
+        assert_eq!(format!("{}", err), "unknown error");
+
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err = Error::DiskError(io_err);
+        assert!(format!("{}", err).contains("Disk IO"));
     }
 }

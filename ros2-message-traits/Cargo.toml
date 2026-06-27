@@ -1,0 +1,10 @@
+[package]
+name = "ros2-message-traits"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal trait definitions for ROS 2 messages and services — zero dependency beyond serde"
+license = "MIT"
+repository = "https://github.com/yinguobing/xcap-private"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

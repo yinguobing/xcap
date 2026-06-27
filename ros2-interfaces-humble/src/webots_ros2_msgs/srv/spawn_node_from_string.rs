@@ -1,0 +1,42 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpawnNodeFromStringRequest {
+    pub data: ::std::string::String,
+}
+
+impl Default for SpawnNodeFromStringRequest {
+    fn default() -> Self {
+        SpawnNodeFromStringRequest {
+            data: ::std::string::String::new(),
+        }
+    }
+}
+
+impl crate::Message for SpawnNodeFromStringRequest {}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpawnNodeFromStringResponse {
+    pub success: bool,
+}
+
+impl Default for SpawnNodeFromStringResponse {
+    fn default() -> Self {
+        SpawnNodeFromStringResponse { success: false }
+    }
+}
+
+impl crate::Message for SpawnNodeFromStringResponse {}
+
+pub struct SpawnNodeFromString;
+impl crate::Service for SpawnNodeFromString {
+    type Request = SpawnNodeFromStringRequest;
+    type Response = SpawnNodeFromStringResponse;
+
+    fn request_type_name(&self) -> &str {
+        "SpawnNodeFromStringRequest"
+    }
+    fn response_type_name(&self) -> &str {
+        "SpawnNodeFromStringResponse"
+    }
+}

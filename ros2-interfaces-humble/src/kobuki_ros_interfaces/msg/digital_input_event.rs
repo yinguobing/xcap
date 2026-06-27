@@ -1,0 +1,14 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DigitalInputEvent {
+    pub values: [bool; 4],
+}
+
+impl Default for DigitalInputEvent {
+    fn default() -> Self {
+        DigitalInputEvent { values: [false; 4] }
+    }
+}
+
+impl crate::Message for DigitalInputEvent {}

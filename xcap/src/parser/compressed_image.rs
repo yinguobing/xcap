@@ -1,9 +1,6 @@
-use crate::extractor::Extractor;
-use crate::visual::Visual;
-use log::error;
+use crate::{extractor::Extractor, parser::ros_types::CompressedImage, visual::Visual};
 use mcap::Message;
 use rerun::RecordingStream;
-use ros2_interfaces_humble::sensor_msgs::msg::CompressedImage;
 use std::{
     fs,
     path::PathBuf,

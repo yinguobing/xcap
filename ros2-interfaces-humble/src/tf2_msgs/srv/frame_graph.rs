@@ -1,0 +1,40 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FrameGraphRequest {}
+
+impl Default for FrameGraphRequest {
+    fn default() -> Self {
+        FrameGraphRequest {}
+    }
+}
+
+impl crate::Message for FrameGraphRequest {}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FrameGraphResponse {
+    pub frame_yaml: ::std::string::String,
+}
+
+impl Default for FrameGraphResponse {
+    fn default() -> Self {
+        FrameGraphResponse {
+            frame_yaml: ::std::string::String::new(),
+        }
+    }
+}
+
+impl crate::Message for FrameGraphResponse {}
+
+pub struct FrameGraph;
+impl crate::Service for FrameGraph {
+    type Request = FrameGraphRequest;
+    type Response = FrameGraphResponse;
+
+    fn request_type_name(&self) -> &str {
+        "FrameGraphRequest"
+    }
+    fn response_type_name(&self) -> &str {
+        "FrameGraphResponse"
+    }
+}
