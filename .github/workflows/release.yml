@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libopenblas-dev pkg-config
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+
+      - name: Build release binary
+        run: cargo build --release --verbose
+
+      - name: Build deb package
+        run: cargo deb --package xcap
+
+      - name: Rename artifacts
+        run: |
+          mkdir -p artifacts
+          cp target/release/xcap "artifacts/xcap-${{ github.ref_name }}-x86_64-linux"
+          cp target/debian/*.deb "artifacts/"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: artifacts/*
